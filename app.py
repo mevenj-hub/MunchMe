@@ -189,7 +189,11 @@ if st.session_state.page == 1:
     col1, col2 = st.columns(2, gap="large")
 
     with col1:
-        st.session_state.user["name"] = st.text_input("Full Name", value=st.session_state.user["name"], placeholder="e.g. Sarah Al-Ahmad")
+        st.session_state.user["name"] = st.text_input(
+            "Full Name", 
+            value=st.session_state.user["name"], 
+            placeholder="e.g. Sarah Al-Ahmad"
+        )
         
         # Date of Birth Calendar Picker
         st.session_state.user["dob"] = st.date_input(
@@ -199,65 +203,99 @@ if st.session_state.page == 1:
             max_value=datetime.date.today()
         )
 
-        # Gender Selection Buttons
+        # Biological Sex as Toggle Buttons
         st.markdown("<label style='font-size:0.9rem; font-weight:600;'>Biological Sex</label>", unsafe_allow_html=True)
-        g_col1, g_col2 = st.columns(2)
-        if g_col1.button("👩 Female", use_container_width=True, type="primary" if st.session_state.user["gender"] == "Female" else "secondary"):
-            st.session_state.user["gender"] = "Female"
-            st.rerun()
-        if g_col2.button("👨 Male", use_container_width=True, type="primary" if st.session_state.user["gender"] == "Male" else "secondary"):
-            st.session_state.user["gender"] = "Male"
-            st.rerun()
+        gender_options = ["Female", "Male"]
+        curr_gender = st.session_state.user.get("gender", "Female")
+        if hasattr(st, "pills"):
+            selected_gender = st.pills("Biological Sex", options=gender_options, default=curr_gender, label_visibility="collapsed")
+            if selected_gender:
+                st.session_state.user["gender"] = selected_gender
+        elif hasattr(st, "segmented_control"):
+            selected_gender = st.segmented_control("Biological Sex", options=gender_options, default=curr_gender, label_visibility="collapsed")
+            if selected_gender:
+                st.session_state.user["gender"] = selected_gender
+        else:
+            g_idx = gender_options.index(curr_gender) if curr_gender in gender_options else 0
+            st.session_state.user["gender"] = st.radio("Biological Sex", gender_options, index=g_idx, horizontal=True, label_visibility="collapsed")
 
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
         # Height with Unit Picker
         h_col1, h_col2 = st.columns([3, 2])
         with h_col1:
-            st.session_state.user["height_val"] = st.number_input("Height", value=float(st.session_state.user["height_val"]), step=0.5)
+            st.session_state.user["height_val"] = st.number_input(
+                "Height", 
+                value=float(st.session_state.user["height_val"]), 
+                step=0.5
+            )
         with h_col2:
-            st.session_state.user["height_unit"] = st.selectbox("Height Unit", ["cm", "inch", "foot"], index=["cm", "inch", "foot"].index(st.session_state.user["height_unit"]))
+            st.session_state.user["height_unit"] = st.selectbox(
+                "Height Unit", 
+                ["cm", "inch", "foot"], 
+                index=["cm", "inch", "foot"].index(st.session_state.user["height_unit"])
+            )
 
         # Weight with Unit Picker
         w_col1, w_col2 = st.columns([3, 2])
         with w_col1:
-            st.session_state.user["weight_val"] = st.number_input("Weight", value=float(st.session_state.user["weight_val"]), step=0.5)
+            st.session_state.user["weight_val"] = st.number_input(
+                "Weight", 
+                value=float(st.session_state.user["weight_val"]), 
+                step=0.5
+            )
         with w_col2:
-            st.session_state.user["weight_unit"] = st.selectbox("Weight Unit", ["kg", "pound"], index=["kg", "pound"].index(st.session_state.user["weight_unit"]))
+            st.session_state.user["weight_unit"] = st.selectbox(
+                "Weight Unit", 
+                ["kg", "pound"], 
+                index=["kg", "pound"].index(st.session_state.user["weight_unit"])
+            )
 
     with col2:
-        # Goal Buttons
+        # Goal as Clickable Button Chips
         st.markdown("<label style='font-size:0.9rem; font-weight:600;'>Primary Goal</label>", unsafe_allow_html=True)
         goal_options = ["Weight Loss", "Muscle Gain", "Maintenance", "Endurance"]
-        btn_cols = st.columns(2)
-        for i, g in enumerate(goal_options):
-            col_target = btn_cols[i % 2]
-            if col_target.button(g, key=f"goal_{g}", use_container_width=True, type="primary" if st.session_state.user["goal"] == g else "secondary"):
-                st.session_state.user["goal"] = g
-                st.rerun()
+        curr_goal = st.session_state.user.get("goal", "Weight Loss")
+        if hasattr(st, "pills"):
+            selected_goal = st.pills("Primary Goal", options=goal_options, default=curr_goal, label_visibility="collapsed")
+            if selected_goal:
+                st.session_state.user["goal"] = selected_goal
+        elif hasattr(st, "segmented_control"):
+            selected_goal = st.segmented_control("Primary Goal", options=goal_options, default=curr_goal, label_visibility="collapsed")
+            if selected_goal:
+                st.session_state.user["goal"] = selected_goal
+        else:
+            goal_idx = goal_options.index(curr_goal) if curr_goal in goal_options else 0
+            st.session_state.user["goal"] = st.radio("Primary Goal", goal_options, index=goal_idx, horizontal=True, label_visibility="collapsed")
 
         st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
 
-        # Diet Type Buttons (formerly Protocol)
+        # Type of Diet as Clickable Button Chips
         st.markdown("<label style='font-size:0.9rem; font-weight:600;'>Type of Diet</label>", unsafe_allow_html=True)
         diet_options = ["Balanced", "High Protein", "Low Carb", "Keto", "Vegetarian"]
-        d_cols = st.columns(3)
-        for i, d in enumerate(diet_options):
-            col_target = d_cols[i % 3]
-            if col_target.button(d, key=f"diet_{d}", use_container_width=True, type="primary" if st.session_state.user["diet_type"] == d else "secondary"):
-                st.session_state.user["diet_type"] = d
-                st.rerun()
+        curr_diet = st.session_state.user.get("diet_type", "Balanced")
+        if hasattr(st, "pills"):
+            selected_diet = st.pills("Type of Diet", options=diet_options, default=curr_diet, label_visibility="collapsed")
+            if selected_diet:
+                st.session_state.user["diet_type"] = selected_diet
+        elif hasattr(st, "segmented_control"):
+            selected_diet = st.segmented_control("Type of Diet", options=diet_options, default=curr_diet, label_visibility="collapsed")
+            if selected_diet:
+                st.session_state.user["diet_type"] = selected_diet
+        else:
+            diet_idx = diet_options.index(curr_diet) if curr_diet in diet_options else 0
+            st.session_state.user["diet_type"] = st.radio("Type of Diet", diet_options, index=diet_idx, horizontal=True, label_visibility="collapsed")
 
-        st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 35px;'></div>", unsafe_allow_html=True)
 
         # Transition Button to Page 2
         if st.button("Continue to Meal Dashboard →", type="primary", use_container_width=True):
             # Unit conversions to metric for BMR
-            weight_kg = st.session_state.user["weight_val"]
+            weight_kg = float(st.session_state.user["weight_val"])
             if st.session_state.user["weight_unit"] == "pound":
                 weight_kg = weight_kg * 0.453592
 
-            height_cm = st.session_state.user["height_val"]
+            height_cm = float(st.session_state.user["height_val"])
             if st.session_state.user["height_unit"] == "inch":
                 height_cm = height_cm * 2.54
             elif st.session_state.user["height_unit"] == "foot":
@@ -356,7 +394,6 @@ elif st.session_state.page == 2:
     if recipes_summary_df.empty:
         st.warning("Connecting to Google Sheets... Ensure your Google Sheet is set to 'Anyone with the link can view'.")
     else:
-        # Normalize column names
         recipes = recipes_summary_df.to_dict(orient="records")
         cols = st.columns(4)
 
@@ -430,10 +467,8 @@ elif st.session_state.page == 2:
             tab1, tab2 = st.tabs(["📝 Recipe Instructions & Ingredients", "📊 Nutritional Macro Analytics"])
 
             with tab1:
-                # Find matching ingredients from the detailed table
                 st.markdown("#### Ingredients Baseline")
                 if not recipe_details_df.empty:
-                    # Filter matching recipe details
                     matched_items = recipe_details_df[
                         recipe_details_df.astype(str).apply(lambda row: rec['name'].lower() in row.to_string().lower(), axis=1)
                     ]
