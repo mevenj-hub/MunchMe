@@ -169,21 +169,115 @@ if "user" not in st.session_state:
 # ==========================================
 # 4. GOOGLE SHEETS DATA LOADER
 # ==========================================
+# ==========================================
+# 3. GOOGLE SHEETS DATA LOADER
+# ==========================================
 SHEET_ID = "1LQsOAfiVeFzsukc1FMfGtmJgx1IcOYxBbPy_PGuIXKw"
 
-@st.cache_data(ttl=300)
-def load_sheet(gid):
+@st.cache_data(ttl=60)
+def load_sheet_by_gid(gid):
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
     try:
-        df = pd.read_csv(url)
+        df = pd.read_csv(url, na_values=["#N/A", "N/A", "#VALUE!", "nan", "None"])
         df.columns = [str(c).strip() for c in df.columns]
         return df
     except Exception:
         return pd.DataFrame()
 
-recipes_summary_df = load_sheet("0")
-recipe_details_df = load_sheet("45255346")
-ingredients_master_df = load_sheet("1075366356")
+# Load from your exact sheet tabs
+recipes_summary_df = load_sheet_by_gid("0") # Items Menu tab
+recipe_details_df = load_sheet_by_gid("45255346") # Meal Plan tab
+ingredients_master_df = load_sheet_by_gid("1075366356") # Ingredients Master tab
+
+# Clean and filter to only show finished recipes
+if not recipes_summary_df.empty and "Total Calories" in recipes_summary_df.columns:
+    # Drop rows where Total Calories or Menu Item is missing/#N/A
+    recipes_clean_df = recipes_summary_df.dropna(subset=["Menu Item", "Total Calories"]).copy()
+    # Ensure numeric types
+    for col in ["Total Calories", "Total Protein", "Total Carbs", "Total Fat"]:
+        if col in recipes_clean_df.columns:
+            recipes_clean_df[col] = pd.to_numeric(recipes_clean_df[col], errors="coerce")
+    # Keep only rows with valid numbers
+    recipes_clean_df = recipes_clean_df.dropna(subset=["Total Calories"])
+else:
+    recipes_clean_df = pd.DataFrame()
+    with tab_meals:
+        if recipes_clean_df.empty:
+            st.warning("No completed recipes found or sheet is still updating. Ensure columns have valid numbers!")
+        else:
+            recipes = recipes_clean_df.to_dict(orient="records")
+            cols = st.columns(4)
+
+            for idx, recipe in enumerate(recipes):
+                with cols[idx % 4]:
+                    name_en = str(recipe.get("Menu Item", f"Recipe #{idx+1}")).strip()
+                    name_ar = str(recipe.get("Menu Item Ar", "")).strip()
+                    category = str(recipe.get("Categories", "Meal")).strip()
+
+                    cals = float(recipe.get("Total Calories", 0))
+                    pro = float(recipe.get("Total Protein", 0))
+                    carb = float(recipe.get("Total Carbs", 0))
+                    fat = float(recipe.get("Total Fat", 0))
+
+                    st.markdown(f"""
+                    <div class="recipe-card">
+                        <div class="recipe-card-header">
+                            <div style="font-size:3rem;">🥗</div>
+                            <div class="badge-count">{category}</div>
+                        </div>
+                        <div class="recipe-card-body">
+                            <div style="font-weight:700; font-size:1rem; color:#0F172A; min-height:45px; line-height:1.2;">
+                                {name_en}<br><span style="font-size:0.85rem; color:#64748B; font-weight:500;">{name_ar}</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin: 8px 0;">
+                                <div>
+                                    <span style="font-size:0.75rem; color:#64748B; font-weight:700;">ENERGY</span>
+                                    <div style="font-weight:800; font-size:1.05rem; color:#0F172A;">🔥 {cals:.0f} kcal</div>
+                                </div>
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; margin-bottom:12px;">
+                                <div class="macro-pill macro-p">P {pro:.1f}g</div>
+                                <div class="macro-pill macro-c">C {carb:.1f}g</div>
+                                <div class="macro-pill macro-f">F {fat:.1f}g</div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    c_action1, c_action2 = st.columns(2)
+                    with c_action1:
+                        if st.button("View Guide", key=f"guide_{idx}", use_container_width=True):
+                            st.session_state.user["selected_recipe"] = {
+                                "name": name_en,
+                                "name_ar": name_ar,
+                                "cals": cals,
+                                "pro": pro,
+                                "carb": carb,
+                                "fat": fat,
+                                "details": recipe
+                            }
+                            st.rerun()
+
+                    with c_action2:
+                        label_btn = "+ Eat Today" if "Today" in st.session_state.plan_mode else "+ Add to Week"
+                        if st.button(label_btn, key=f"eat_{idx}", use_container_width=True):
+                            st.session_state.user["consumed_calories"] += cals
+                            st.session_state.user["consumed_protein"] += pro
+                            st.session_state.user["consumed_carbs"] += carb
+                            st.session_state.user["consumed_fat"] += fat
+
+                            # Add to grocery list
+                            if name_en in st.session_state.grocery_list:
+                                st.session_state.grocery_list[name_en]["servings"] += 1
+                            else:
+                                st.session_state.grocery_list[name_en] = {
+                                    "servings": 1,
+                                    "cals": cals,
+                                    "pro": pro,
+                                    "carb": carb,
+                                    "fat": fat
+                                }
+                            st.rerun()
 
 # ==========================================
 # 5. HEADER BRANDING & LOGO
