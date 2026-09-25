@@ -194,6 +194,9 @@ if "margot_history" not in st.session_state:
         {"role": "margot", "content": "مرحباً بك! أنا مارغو، شيف Munch Me ومساعدتك التغذوية الذكية. كيف يمكنني مساعدتك اليوم؟" if is_ar else "👋 Marhaban! I am Margot, your personal culinary nutritionist. How can I assist you with meal prep, custom substitutions, or recipes today?"}
     ]
 
+if "active_modal_recipe" not in st.session_state:
+    st.session_state.active_modal_recipe = None
+
 if "user" not in st.session_state:
     st.session_state.user = {
         "name": "",
@@ -213,7 +216,6 @@ if "user" not in st.session_state:
         "consumed_protein": 0.0,
         "consumed_carbs": 0.0,
         "consumed_fat": 0.0,
-        "selected_recipe": None
     }
 
 # ==========================================
@@ -277,12 +279,61 @@ else:
     recipes_clean_df = pd.DataFrame()
 
 # ==========================================
-# 6. HEADER, LOGO & LANGUAGE SWITCHER
+# 6. RECIPE MODAL DIALOG
+# ==========================================
+if hasattr(st, "dialog"):
+    @st.dialog("Recipe Guide / دليل الوصفة", width="large")
+    def display_recipe_dialog(rec):
+        title_view = f"📖 {rec['name_ar']} ({rec['name']})" if is_ar else f"📖 {rec['name']} ({rec['name_ar']})"
+        st.markdown(f"### {title_view}")
+
+        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+        m_col1.metric("السعرات" if is_ar else "Calories", f"{int(rec['cals'])} kcal")
+        m_col2.metric("بروتين" if is_ar else "Protein", f"{rec['pro']:.1f} g")
+        m_col3.metric("كاربوهيدرات" if is_ar else "Carbs", f"{rec['carb']:.1f} g")
+        m_col4.metric("دهون" if is_ar else "Fat", f"{rec['fat']:.1f} g")
+
+        guide_tab1, guide_tab2 = st.tabs([
+            "📝 المكونات وطريقة الإعداد" if is_ar else "📝 Ingredients & Method", 
+            "📊 تحليل نسب الماكروز" if is_ar else "📊 Macro Analytics"
+        ])
+
+        with guide_tab1:
+            st.markdown(f"#### {'مكونات الوصفة الدقيقة' if is_ar else 'Ingredients Baseline & Method'}")
+            if not recipe_details_df.empty:
+                clean_match_name = rec.get("clean_name", rec['name'].replace(" (Side Salad ½)", ""))
+                matched_items = recipe_details_df[
+                    recipe_details_df.astype(str).apply(lambda row: clean_match_name.lower() in row.to_string().lower(), axis=1)
+                ]
+                if not matched_items.empty:
+                    cols_to_show = [c for c in ["Ingredients", "Qtty.", "Unit", "Calories", "Protein", "Carbs", "Fat", "Method"] if c in matched_items.columns]
+                    st.dataframe(matched_items[cols_to_show] if cols_to_show else matched_items, use_container_width=True)
+                else:
+                    st.info("تم تحميل المكونات من جدول البيانات." if is_ar else "Ingredients loaded from Google Sheet.")
+            else:
+                st.info("لا توجد تفاصيل إضافية مسجلة لهذه الوصفة." if is_ar else "Detailed ingredient rows loaded from Google Sheet.")
+
+        with guide_tab2:
+            total_macro_cals = (rec['pro'] * 4) + (rec['carb'] * 4) + (rec['fat'] * 9)
+            if total_macro_cals > 0:
+                p_pct = round(((rec['pro'] * 4) / total_macro_cals) * 100)
+                c_pct = round(((rec['carb'] * 4) / total_macro_cals) * 100)
+                f_pct = round(((rec['fat'] * 9) / total_macro_cals) * 100)
+
+                c_pct1, c_pct2, c_pct3 = st.columns(3)
+                c_pct1.success(f"{'البروتين' if is_ar else 'Protein'}: {p_pct}% ({rec['pro'] * 4:.0f} kcal)")
+                c_pct2.warning(f"{'الكاربوهيدرات' if is_ar else 'Carbs'}: {c_pct}% ({rec['carb'] * 4:.0f} kcal)")
+                c_pct3.error(f"{'الدهون' if is_ar else 'Fat'}: {f_pct}% ({rec['fat'] * 9:.0f} kcal)")
+else:
+    def display_recipe_dialog(rec):
+        st.session_state.active_modal_recipe = rec
+
+# ==========================================
+# 7. HEADER, LOGO & LANGUAGE SWITCHER
 # ==========================================
 h_col1, h_col2, h_col3 = st.columns([1.5, 6, 2.5])
 
 with h_col1:
-    # Checks for all common logo variations uploaded to repository
     if os.path.exists("logo.jpg"):
         st.image("logo.jpg", width=85)
     elif os.path.exists("logo.png"):
@@ -629,8 +680,9 @@ elif st.session_state.page == 2:
 
                         c_action1, c_action2 = st.columns(2)
                         with c_action1:
-                            if st.button("طريقة التحضير" if is_ar else "View Guide", key=f"guide_{meal_slot}_{idx}", use_container_width=True):
-                                st.session_state.user["selected_recipe"] = {
+                            guide_btn_label = "طريقة التحضير" if is_ar else "View Guide"
+                            if st.button(guide_btn_label, key=f"guide_{meal_slot}_{idx}", use_container_width=True):
+                                current_selected = {
                                     "name": f"{name_en} (Side Salad ½)" if is_side_salad else name_en,
                                     "clean_name": name_en,
                                     "name_ar": name_ar,
@@ -640,7 +692,7 @@ elif st.session_state.page == 2:
                                     "fat": fat,
                                     "details": recipe
                                 }
-                                st.rerun()
+                                display_recipe_dialog(current_selected)
 
                         with c_action2:
                             add_label = ("+ تناول اليوم" if "1" in st.session_state.plan_mode else "+ أضف للأسبوع") if is_ar else ("+ Eat Today" if "Today" in st.session_state.plan_mode else "+ Add to Week")
@@ -679,49 +731,15 @@ elif st.session_state.page == 2:
                                                 }
                                 st.rerun()
 
-        # Recipe details modal
-        if st.session_state.user["selected_recipe"] is not None:
-            rec = st.session_state.user["selected_recipe"]
-            st.markdown("<hr style='border:0; border-top:2px solid #10B981; margin: 30px 0;'>", unsafe_allow_html=True)
-            
-            title_view = f"📖 {rec['name_ar']} ({rec['name']})" if is_ar else f"📖 {rec['name']} ({rec['name_ar']})"
-            st.markdown(f"## {title_view}")
-            m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-            m_col1.metric("السعرات" if is_ar else "Calories", f"{int(rec['cals'])} kcal")
-            m_col2.metric("بروتين" if is_ar else "Protein", f"{rec['pro']:.1f} g")
-            m_col3.metric("كاربوهيدرات" if is_ar else "Carbs", f"{rec['carb']:.1f} g")
-            m_col4.metric("دهون" if is_ar else "Fat", f"{rec['fat']:.1f} g")
-
-            guide_tab1, guide_tab2 = st.tabs(["📝 المكونات وطريقة الإعداد" if is_ar else "📝 Ingredients & Method", "📊 تحليل نسب الماكروز" if is_ar else "📊 Macro Analytics"])
-
-            with guide_tab1:
-                st.markdown(f"#### {'مكونات الوصفة الدقيقة' if is_ar else 'Ingredients Baseline & Method'}")
-                if not recipe_details_df.empty:
-                    clean_match_name = rec.get("clean_name", rec['name'].replace(" (Side Salad ½)", ""))
-                    matched_items = recipe_details_df[
-                        recipe_details_df.astype(str).apply(lambda row: clean_match_name.lower() in row.to_string().lower(), axis=1)
-                    ]
-                    if not matched_items.empty:
-                        cols_to_show = [c for c in ["Ingredients", "Qtty.", "Unit", "Calories", "Protein", "Carbs", "Fat", "Method"] if c in matched_items.columns]
-                        st.dataframe(matched_items[cols_to_show] if cols_to_show else matched_items, use_container_width=True)
-                    else:
-                        st.info("تم تحميل المكونات من جدول البيانات." if is_ar else "Ingredients loaded from Google Sheet.")
-
-            with guide_tab2:
-                total_macro_cals = (rec['pro'] * 4) + (rec['carb'] * 4) + (rec['fat'] * 9)
-                if total_macro_cals > 0:
-                    p_pct = round(((rec['pro'] * 4) / total_macro_cals) * 100)
-                    c_pct = round(((rec['carb'] * 4) / total_macro_cals) * 100)
-                    f_pct = round(((rec['fat'] * 9) / total_macro_cals) * 100)
-
-                    c_pct1, c_pct2, c_pct3 = st.columns(3)
-                    c_pct1.success(f"{'البروتين' if is_ar else 'Protein'}: {p_pct}% ({rec['pro'] * 4:.0f} kcal)")
-                    c_pct2.warning(f"{'الكاربوهيدرات' if is_ar else 'Carbs'}: {c_pct}% ({rec['carb'] * 4:.0f} kcal)")
-                    c_pct3.error(f"{'الدهون' if is_ar else 'Fat'}: {f_pct}% ({rec['fat'] * 9:.0f} kcal)")
-
-            if st.button("إغلاق دليل الوصفة" if is_ar else "Close Recipe Guide", type="secondary"):
-                st.session_state.user["selected_recipe"] = None
-                st.rerun()
+            # Fallback inline preview for older versions without modal support
+            if not hasattr(st, "dialog") and st.session_state.active_modal_recipe:
+                rec = st.session_state.active_modal_recipe
+                st.markdown("<hr style='border:0; border-top:2px solid #10B981; margin: 30px 0;'>", unsafe_allow_html=True)
+                title_view = f"📖 {rec['name_ar']} ({rec['name']})" if is_ar else f"📖 {rec['name']} ({rec['name_ar']})"
+                st.markdown(f"### {title_view}")
+                if st.button("Close Guide" if not is_ar else "إغلاق الدليل"):
+                    st.session_state.active_modal_recipe = None
+                    st.rerun()
 
     # ==========================================
     # TAB 2: NOTE-STYLE GROCERY LIST WITH CHECKBOXES
