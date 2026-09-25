@@ -287,27 +287,29 @@ def resolve_image_url(img_val):
     if not img_val or pd.isna(img_val):
         return ""
     val = str(img_val).strip()
-    if not val or val.lower() in ["none", "nan", "#n/a"]:
+    if not val or val.lower() in ["none", "nan", "#n/a", ""]:
         return ""
 
-    # Convert Google Drive links
-    if "drive.google.com" in val:
-        file_id_match = re.search(r"/(?:d|folders|file/d)/([a-zA-Z0-9_-]+)", val) or re.search(r"id=([a-zA-Z0-9_-]+)", val)
-        if file_id_match:
-            return f"https://drive.google.com/thumbnail?id={file_id_match.group(1)}&sz=w1000"
+    # 1. Direct Web URLs (Imgur, Postimages, Cloudinary, AWS S3, etc.)
+    if val.startswith("http://") or val.startswith("https://"):
+        if "drive.google.com" in val:
+            file_id = re.search(r"/(?:d|folders|file/d)/([a-zA-Z0-9_-]+)", val) or re.search(r"id=([a-zA-Z0-9_-]+)", val)
+            if file_id:
+                return f"https://drive.google.com/thumbnail?id={file_id.group(1)}&sz=w1000"
+        return val
 
-    # Local file exists
+    # 2. Local files in root or images subfolder
     if os.path.exists(val):
         return val
     if os.path.exists(os.path.join("images", val)):
         return os.path.join("images", val)
 
-    # Raw filename in GitHub repository
-    if not val.startswith("http"):
-        clean_file = val.replace(" ", "%20")
-        return f"https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/{clean_file}"
-
-    return val
+    # 3. GitHub Raw URLs (checks both root and images/ folder)
+    clean_name = val.replace(" ", "%20")
+    if not clean_name.endswith((".png", ".jpg", ".jpeg", ".webp")):
+        clean_name += ".png"
+        
+    return f"https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/images/{clean_name}"
 
 def categorize_ingredient(name):
     n = str(name).lower()
