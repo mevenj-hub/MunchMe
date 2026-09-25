@@ -242,29 +242,42 @@ def extract_numeric(val, default=0.0):
     return default
 
 def resolve_image_url(img_val, category="", name_en=""):
-    # Extract scalar string if a Series is passed
     if isinstance(img_val, (pd.Series, list)):
-        if len(img_val) > 0:
-            val_candidate = img_val[0]
-            val = "" if pd.isna(val_candidate) else str(val_candidate).strip()
-        else:
-            val = ""
+        val = str(img_val[0]).strip() if len(img_val) > 0 and not pd.isna(img_val[0]) else ""
     elif pd.isna(img_val) or img_val is None:
         val = ""
     else:
         val = str(img_val).strip()
 
     if val and val.lower() not in ["none", "nan", "#n/a", ""]:
-        # Google Drive Link
+        # If it's already an lh3 direct embed link, return as-is
+        if "lh3.googleusercontent.com" in val:
+            return val
+            
+        # Convert any Google Drive view or thumbnail link to lh3 CDN format
         if "drive.google.com" in val:
             file_id = re.search(r"/(?:d|folders|file/d)/([a-zA-Z0-9_-]+)", val) or re.search(r"id=([a-zA-Z0-9_-]+)", val)
             if file_id:
-                return f"https://drive.google.com/thumbnail?id={file_id.group(1)}&sz=w1000"
+                return f"https://lh3.googleusercontent.com/d/{file_id.group(1)}"
             return val
+
         if val.startswith("http://") or val.startswith("https://"):
             return val
+
         if os.path.exists(val):
             return val
+
+    # Fallback to local image check
+    if name_en:
+        clean_base = str(name_en).strip()
+        for ext in [".png", ".jpg"]:
+            cand = f"{clean_base}{ext}"
+            if os.path.exists(cand):
+                return cand
+            if os.path.exists(os.path.join("images", cand)):
+                return os.path.join("images", cand)
+
+    return ""
 
     # Fallback by clean name
     if name_en:
