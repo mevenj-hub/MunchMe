@@ -109,6 +109,17 @@ st.markdown("""
         border: 1px solid #BBF7D0;
         color: #166534;
     }
+
+    .grocery-section-header {
+        background: #F1F5F9;
+        padding: 8px 14px;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 1rem;
+        color: #1E293B;
+        margin-top: 15px;
+        margin-bottom: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -128,7 +139,27 @@ def extract_numeric(val, default=0.0):
     return default
 
 # ==========================================
-# 3. SESSION STATE MANAGEMENT
+# 3. SUPERMARKET AISLE CLASSIFIER
+# ==========================================
+def categorize_ingredient(name):
+    n = str(name).lower()
+    if any(k in n for k in ["lettuce", "rocca", "cucumber", "tomato", "onion", "garlic", "spinach", "cabbage", "pepper", "broccoli", "carrot", "herb", "parsley", "mint", "cilantro", "zucchini", "mushroom", "potato", "corn"]):
+        return "🥬 Vegetables & Greens"
+    elif any(k in n for k in ["apple", "banana", "berry", "berries", "strawberry", "lemon", "lime", "date", "orange", "avocado", "mango", "pomegranate"]):
+        return "🍎 Fresh Fruits"
+    elif any(k in n for k in ["chicken", "beef", "meat", "turkey", "fish", "salmon", "tuna", "shrimp"]):
+        return "🥩 Meat, Poultry & Seafood"
+    elif any(k in n for k in ["milk", "yogurt", "cheese", "halloumi", "labneh", "butter", "egg", "cream"]):
+        return "🥛 Dairy, Milk & Eggs"
+    elif any(k in n for k in ["rice", "bread", "toast", "oat", "quinoa", "freekeh", "pasta", "fettuccine", "flour", "tortilla"]):
+        return "🌾 Grains, Pasta & Bakery"
+    elif any(k in n for k in ["almond", "walnut", "cashew", "peanut", "seed", "chia"]):
+        return "🥜 Nuts & Seeds"
+    else:
+        return "🧂 Pantry, Oils, Spices & Dressings"
+
+# ==========================================
+# 4. SESSION STATE MANAGEMENT
 # ==========================================
 if "page" not in st.session_state:
     st.session_state.page = 1
@@ -136,8 +167,9 @@ if "page" not in st.session_state:
 if "plan_mode" not in st.session_state:
     st.session_state.plan_mode = "Today (1 Day)"
 
-if "grocery_list" not in st.session_state:
-    st.session_state.grocery_list = {}
+# Stores: { "ingredient_name": { "quantity": float, "unit": str, "category": str } }
+if "raw_grocery_items" not in st.session_state:
+    st.session_state.raw_grocery_items = {}
 
 if "margot_history" not in st.session_state:
     st.session_state.margot_history = [
@@ -167,7 +199,7 @@ if "user" not in st.session_state:
     }
 
 # ==========================================
-# 4. MEAL SLOTS & CATEGORY HIERARCHY
+# 5. MEAL SLOTS & CATEGORY HIERARCHY
 # ==========================================
 MEAL_STRUCTURE = {
     "Breakfast": [
@@ -199,7 +231,7 @@ MEAL_STRUCTURE = {
 }
 
 # ==========================================
-# 5. GOOGLE SHEETS DATA LOADER
+# 6. GOOGLE SHEETS DATA LOADER
 # ==========================================
 SHEET_ID = "1LQsOAfiVeFzsukc1FMfGtmJgx1IcOYxBbPy_PGuIXKw"
 
@@ -213,11 +245,31 @@ def load_sheet_by_gid(gid):
     except Exception:
         return pd.DataFrame()
 
+# Sheet 1: Items Menu (gid=0)
 recipes_summary_df = load_sheet_by_gid("0")
-recipe_details_df = load_sheet_by_gid("45255346")
-ingredients_master_df = load_sheet_by_gid("1075366356")
 
-# Filter out uncompleted / #N/A rows
+# Sheet 2: Calories Data (Detailed ingredients and recipes) (gid=45255346)
+recipe_details_df = load_sheet_by_gid("45255346")
+
+# Clean recipe details columns if present
+if not recipe_details_df.empty:
+    col_map = {}
+    for c in recipe_details_df.columns:
+        cl = c.lower()
+        if "greek" in cl or "recipe" in cl or "menu" in cl:
+            col_map[c] = "Recipe Name"
+        elif "ingredient" in cl:
+            col_map[c] = "Ingredients"
+        elif "qtt" in cl or "qty" in cl:
+            col_map[c] = "Qtty."
+        elif "unit" in cl:
+            col_map[c] = "Unit"
+    recipe_details_df.rename(columns=col_map, inplace=True)
+    # Forward fill recipe names for grouped rows
+    if "Recipe Name" in recipe_details_df.columns:
+        recipe_details_df["Recipe Name"] = recipe_details_df["Recipe Name"].ffill()
+
+# Filter out uncompleted / #N/A rows from Items Menu
 if not recipes_summary_df.empty and "Total Calories" in recipes_summary_df.columns:
     recipes_clean_df = recipes_summary_df.dropna(subset=["Menu Item", "Total Calories"]).copy()
     for col in ["Total Calories", "Total Protein", "Total Carbs", "Total Fat"]:
@@ -228,7 +280,7 @@ else:
     recipes_clean_df = pd.DataFrame()
 
 # ==========================================
-# 6. BRAND HEADER & LOGO
+# 7. BRAND HEADER & LOGO
 # ==========================================
 col_logo, col_title = st.columns([1, 6])
 with col_logo:
@@ -455,7 +507,6 @@ elif st.session_state.page == 2:
         if recipes_clean_df.empty:
             st.warning("No completed recipes found or sheet is still updating. Ensure columns have valid numbers!")
         else:
-            # 1. Main Meal Slot Selector Pills
             st.markdown("#### Select Meal Slot")
             meal_slot = st.pills(
                 "Meal Slot",
@@ -464,7 +515,6 @@ elif st.session_state.page == 2:
                 label_visibility="collapsed"
             ) or "Breakfast"
 
-            # 2. Subcategories under the selected meal slot
             available_subcats = MEAL_STRUCTURE[meal_slot]
             st.markdown(f"**Categories for {meal_slot}:**")
             subcat_choice = st.pills(
@@ -474,7 +524,6 @@ elif st.session_state.page == 2:
                 label_visibility="collapsed"
             ) or "All"
 
-            # 3. Filter DataFrame based on selection
             if meal_slot == "Snacks" and (subcat_choice in ["All", "Side Salads"]):
                 target_categories = [c for c in available_subcats if c != "Side Salads"] + ["Salads"]
             else:
@@ -499,7 +548,6 @@ elif st.session_state.page == 2:
                         name_en = str(recipe.get("Menu Item", f"Recipe #{idx+1}")).strip()
                         name_ar = str(recipe.get("Menu Item Ar", "")).strip()
 
-                        # Apply 50% half-portion rule if in Snacks slot and it's a Salad
                         is_side_salad = (meal_slot == "Snacks" and (raw_cat == "Salads" or subcat_choice == "Side Salads"))
                         portion_multiplier = 0.5 if is_side_salad else 1.0
 
@@ -540,6 +588,7 @@ elif st.session_state.page == 2:
                             if st.button("View Guide", key=f"guide_{meal_slot}_{idx}", use_container_width=True):
                                 st.session_state.user["selected_recipe"] = {
                                     "name": f"{name_en} (Side Salad ½)" if is_side_salad else name_en,
+                                    "clean_name": name_en,
                                     "name_ar": name_ar,
                                     "cals": cals,
                                     "pro": pro,
@@ -557,19 +606,39 @@ elif st.session_state.page == 2:
                                 st.session_state.user["consumed_carbs"] += carb
                                 st.session_state.user["consumed_fat"] += fat
 
-                                item_label = f"{name_en} (½ Side Salad)" if is_side_salad else name_en
-                                if item_label in st.session_state.grocery_list:
-                                    st.session_state.grocery_list[item_label]["servings"] += 1
-                                else:
-                                    st.session_state.grocery_list[item_label] = {
-                                        "servings": 1,
-                                        "cals": cals,
-                                        "pro": pro,
-                                        "carb": carb,
-                                        "fat": fat
-                                    }
+                                # Extract specific ingredients from Calories Data sheet
+                                if not recipe_details_df.empty and "Ingredients" in recipe_details_df.columns:
+                                    # Match by Recipe Name
+                                    matched_rows = recipe_details_df[
+                                        recipe_details_df["Recipe Name"].astype(str).str.lower().str.strip() == name_en.lower()
+                                    ]
+                                    if matched_rows.empty:
+                                        # Fallback fuzzy match
+                                        matched_rows = recipe_details_df[
+                                            recipe_details_df.astype(str).apply(lambda r: name_en.lower() in r.to_string().lower(), axis=1)
+                                        ]
+
+                                    for _, ing_row in matched_rows.iterrows():
+                                        ing_name = str(ing_row.get("Ingredients", "")).strip()
+                                        if ing_name and ing_name.lower() != "nan" and ing_name.lower() != "ingredients":
+                                            raw_q = extract_numeric(ing_row.get("Qtty.", 100)) * portion_multiplier
+                                            raw_u = str(ing_row.get("Unit", "g")).strip()
+                                            if not raw_u or raw_u.lower() == "nan":
+                                                raw_u = "g"
+                                            
+                                            ing_cat = categorize_ingredient(ing_name)
+
+                                            if ing_name in st.session_state.raw_grocery_items:
+                                                st.session_state.raw_grocery_items[ing_name]["quantity"] += raw_q
+                                            else:
+                                                st.session_state.raw_grocery_items[ing_name] = {
+                                                    "quantity": raw_q,
+                                                    "unit": raw_u,
+                                                    "category": ing_cat
+                                                }
                                 st.rerun()
 
+        # Modal Recipe Details
         if st.session_state.user["selected_recipe"] is not None:
             rec = st.session_state.user["selected_recipe"]
             st.markdown("<hr style='border:0; border-top:2px solid #10B981; margin: 30px 0;'>", unsafe_allow_html=True)
@@ -586,12 +655,14 @@ elif st.session_state.page == 2:
             with guide_tab1:
                 st.markdown("#### Ingredients Baseline & Method")
                 if not recipe_details_df.empty:
-                    clean_match_name = rec['name'].replace(" (Side Salad ½)", "")
+                    clean_match_name = rec.get("clean_name", rec['name'].replace(" (Side Salad ½)", ""))
                     matched_items = recipe_details_df[
                         recipe_details_df.astype(str).apply(lambda row: clean_match_name.lower() in row.to_string().lower(), axis=1)
                     ]
                     if not matched_items.empty:
-                        st.dataframe(matched_items, use_container_width=True)
+                        # Display clean columns
+                        cols_to_show = [c for c in ["Ingredients", "Qtty.", "Unit", "Calories", "Protein", "Carbs", "Fat", "Method"] if c in matched_items.columns]
+                        st.dataframe(matched_items[cols_to_show] if cols_to_show else matched_items, use_container_width=True)
                     else:
                         st.info("Ingredients loaded directly from your Google Sheet.")
                 else:
@@ -613,34 +684,50 @@ elif st.session_state.page == 2:
                 st.session_state.user["selected_recipe"] = None
                 st.rerun()
 
+    # ==============================================================================
+    # TAB 2: AISLE-GROUPED CONSOLIDATED GROCERY LIST
+    # ==============================================================================
     with tab_grocery:
-        st.markdown(f"### Consolidated Grocery List ({st.session_state.plan_mode})")
-        st.caption("Aggregated from the meals you have scheduled or logged.")
+        st.markdown(f"### 🛒 Consolidated Grocery Shopping List ({st.session_state.plan_mode})")
+        st.caption("Aggregated raw ingredients grouped by supermarket section based on your planned meals.")
 
-        if not st.session_state.grocery_list:
-            st.info("No meals added yet! Click '+ Eat Today' or '+ Add to Week' on any recipe card to build your shopping list.")
+        if not st.session_state.raw_grocery_items:
+            st.info("Your shopping list is empty! Click '+ Eat Today' or '+ Add to Week' on any recipe card to build your ingredient list.")
         else:
-            grocery_data = []
-            for recipe_name, item_info in st.session_state.grocery_list.items():
-                grocery_data.append({
-                    "Recipe": recipe_name,
-                    "Planned Servings": item_info["servings"],
-                    "Total Calories": int(item_info["cals"] * item_info["servings"]),
-                    "Total Protein (g)": round(item_info["pro"] * item_info["servings"], 1),
-                    "Total Carbs (g)": round(item_info["carb"] * item_info["servings"], 1),
-                    "Total Fat (g)": round(item_info["fat"] * item_info["servings"], 1)
+            # Group items by aisle category
+            items_by_cat = {}
+            for ing_name, data in st.session_state.raw_grocery_items.items():
+                cat = data.get("category", "🧂 Pantry, Oils, Spices & Dressings")
+                if cat not in items_by_cat:
+                    items_by_cat[cat] = []
+                
+                # Format quantity nicely (no decimal if integer)
+                q_val = round(data["quantity"], 1)
+                if q_val.is_integer():
+                    q_val = int(q_val)
+                    
+                items_by_cat[cat].append({
+                    "Ingredient": ing_name,
+                    "Total Amount Needed": f"{q_val} {data['unit']}"
                 })
 
-            st.dataframe(pd.DataFrame(grocery_data), use_container_width=True)
+            # Render tables per section
+            for section, rows in sorted(items_by_cat.items()):
+                st.markdown(f"<div class='grocery-section-header'>{section} ({len(rows)} items)</div>", unsafe_allow_html=True)
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
+            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
             if st.button("Clear Shopping List", type="secondary"):
-                st.session_state.grocery_list = {}
+                st.session_state.raw_grocery_items = {}
                 st.session_state.user["consumed_calories"] = 0.0
                 st.session_state.user["consumed_protein"] = 0.0
                 st.session_state.user["consumed_carbs"] = 0.0
                 st.session_state.user["consumed_fat"] = 0.0
                 st.rerun()
 
+    # ==============================================================================
+    # TAB 3: MARGOT AI CHEF ASSISTANT
+    # ==============================================================================
     with tab_margot:
         st.markdown("### 👩‍🍳 Margot | Culinary Nutritionist & AI Chef")
         st.caption("Ask Margot about ingredient swaps, culinary techniques, prep steps, or diet tailoring.")
