@@ -917,7 +917,10 @@ elif st.session_state.page == 2:
                         display_title = f"{name_ar}<br><span style='font-size:0.85rem; color:#64748B; font-weight:500;'>{name_en}</span>" if is_ar else f"{name_en}<br><span style='font-size:0.85rem; color:#64748B; font-weight:500;'>{name_ar}</span>"
                         display_badge = ("سلطة جانبية (نصف حصة)" if is_ar else "Side Salad (½ Portion)") if is_side_salad else raw_cat
 
-                        header_media = f'<img src="{resolved_img}">' if resolved_img else '<div style="font-size:3.5rem;">🥗</div>'
+                       header_media = f"""
+                        <img src="{resolved_img}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width:100%; height:100%; object-fit:cover;">
+                        <div style="display:{'none' if resolved_img else 'flex'}; width:100%; height:100%; align-items:center; justify-content:center; font-size:3.5rem; background:#F1F5F9;">🥗</div>
+                        """ if resolved_img else '<div style="display:flex; width:100%; height:100%; align-items:center; justify-content:center; font-size:3.5rem; background:#F1F5F9;">🥗</div>'
 
                         st.markdown(f"""
                         <div class="recipe-card">
