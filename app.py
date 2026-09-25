@@ -3,6 +3,7 @@ import pandas as pd
 import datetime
 import os
 import re
+import math
 from google import genai
 
 # ==========================================
@@ -15,7 +16,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Language state initialization
 if "lang" not in st.session_state:
     st.session_state.lang = "English"
 
@@ -103,6 +103,40 @@ st.markdown(f"""
     .macro-c {{ background-color: #FEF9C3; color: #CA8A04; }}
     .macro-f {{ background-color: #FFE4E6; color: #E11D48; }}
 
+    /* Ingredient Item Card */
+    .ing-card {{
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }}
+    .ing-title {{
+        font-weight: 700;
+        color: #1E293B;
+        font-size: 0.95rem;
+    }}
+    .ing-amount {{
+        font-weight: 800;
+        color: #059669;
+        background: #F0FDF4;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+    }}
+
+    /* Step Card */
+    .step-card {{
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
+    }}
+
     /* Note-Style Grocery List Card */
     .note-card {{
         background: #FFFDF9;
@@ -174,6 +208,43 @@ def categorize_ingredient(name):
     else:
         return ("بهارات وزيوت ومستلزمات", "🧂 Pantry, Oils, Spices & Dressings") if is_ar else ("🧂 Pantry, Oils, Spices & Dressings", "بهارات وزيوت ومستلزمات")
 
+def generate_donut_chart_svg(pro_kcal, carb_kcal, fat_kcal, total_cals):
+    total = max(1.0, pro_kcal + carb_kcal + fat_kcal)
+    p_pct = pro_kcal / total
+    c_pct = carb_kcal / total
+    f_pct = fat_kcal / total
+
+    # Circumference for r=70
+    circ = 2 * math.pi * 70  # ~439.82
+    p_dash = circ * p_pct
+    c_dash = circ * c_pct
+    f_dash = circ * f_pct
+
+    p_offset = 0.0
+    c_offset = -p_dash
+    f_offset = -(p_dash + c_dash)
+
+    svg = f"""
+    <div style="display:flex; justify-content:center; align-items:center; margin: 15px 0;">
+      <svg width="210" height="210" viewBox="0 0 200 200">
+        <circle cx="100" cy="100" r="70" fill="transparent" stroke="#E2E8F0" stroke-width="26" />
+        <!-- Protein (Green) -->
+        <circle cx="100" cy="100" r="70" fill="transparent" stroke="#059669" stroke-width="26"
+                stroke-dasharray="{p_dash:.2f} {circ:.2f}" stroke-dashoffset="{p_offset:.2f}" transform="rotate(-90 100 100)" />
+        <!-- Carbs (Yellow) -->
+        <circle cx="100" cy="100" r="70" fill="transparent" stroke="#CA8A04" stroke-width="26"
+                stroke-dasharray="{c_dash:.2f} {circ:.2f}" stroke-dashoffset="{c_offset:.2f}" transform="rotate(-90 100 100)" />
+        <!-- Fat (Red) -->
+        <circle cx="100" cy="100" r="70" fill="transparent" stroke="#E11D48" stroke-width="26"
+                stroke-dasharray="{f_dash:.2f} {circ:.2f}" stroke-dashoffset="{f_offset:.2f}" transform="rotate(-90 100 100)" />
+        
+        <text x="100" y="96" text-anchor="middle" font-size="24" font-weight="800" fill="#0F172A" font-family="Plus Jakarta Sans, sans-serif">{int(total_cals)}</text>
+        <text x="100" y="118" text-anchor="middle" font-size="12" font-weight="700" fill="#64748B" font-family="Plus Jakarta Sans, sans-serif">KCAL</text>
+      </svg>
+    </div>
+    """
+    return svg
+
 # ==========================================
 # 3. SESSION STATE MANAGEMENT
 # ==========================================
@@ -188,6 +259,9 @@ if "raw_grocery_items" not in st.session_state:
 
 if "grocery_checked" not in st.session_state:
     st.session_state.grocery_checked = {}
+
+if "recipe_steps_checked" not in st.session_state:
+    st.session_state.recipe_steps_checked = {}
 
 if "margot_history" not in st.session_state:
     st.session_state.margot_history = [
@@ -265,6 +339,8 @@ if not recipe_details_df.empty:
             col_map[c] = "Qtty."
         elif "unit" in cl:
             col_map[c] = "Unit"
+        elif "method" in cl:
+            col_map[c] = "Method"
     recipe_details_df.rename(columns=col_map, inplace=True)
     if "Recipe Name" in recipe_details_df.columns:
         recipe_details_df["Recipe Name"] = recipe_details_df["Recipe Name"].ffill()
@@ -279,7 +355,7 @@ else:
     recipes_clean_df = pd.DataFrame()
 
 # ==========================================
-# 6. RECIPE MODAL DIALOG
+# 6. ENHANCED RECIPE MODAL (DONUT & STEPS)
 # ==========================================
 if hasattr(st, "dialog"):
     @st.dialog("Recipe Guide / دليل الوصفة", width="large")
@@ -287,6 +363,7 @@ if hasattr(st, "dialog"):
         title_view = f"📖 {rec['name_ar']} ({rec['name']})" if is_ar else f"📖 {rec['name']} ({rec['name_ar']})"
         st.markdown(f"### {title_view}")
 
+        # Top Metric Cards
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
         m_col1.metric("السعرات" if is_ar else "Calories", f"{int(rec['cals'])} kcal")
         m_col2.metric("بروتين" if is_ar else "Protein", f"{rec['pro']:.1f} g")
@@ -299,31 +376,102 @@ if hasattr(st, "dialog"):
         ])
 
         with guide_tab1:
-            st.markdown(f"#### {'مكونات الوصفة الدقيقة' if is_ar else 'Ingredients Baseline & Method'}")
+            clean_match_name = rec.get("clean_name", rec['name'].replace(" (Side Salad ½)", ""))
+            matched_items = pd.DataFrame()
             if not recipe_details_df.empty:
-                clean_match_name = rec.get("clean_name", rec['name'].replace(" (Side Salad ½)", ""))
                 matched_items = recipe_details_df[
                     recipe_details_df.astype(str).apply(lambda row: clean_match_name.lower() in row.to_string().lower(), axis=1)
                 ]
-                if not matched_items.empty:
-                    cols_to_show = [c for c in ["Ingredients", "Qtty.", "Unit", "Calories", "Protein", "Carbs", "Fat", "Method"] if c in matched_items.columns]
-                    st.dataframe(matched_items[cols_to_show] if cols_to_show else matched_items, use_container_width=True)
+
+            col_ing, col_steps = st.columns([1, 1.2], gap="medium")
+
+            # Left Column: Ingredients as a clean List
+            with col_ing:
+                st.markdown(f"**{'🥗 قائمة المقادير:' if is_ar else '🥗 Ingredients:'}**")
+                if not matched_items.empty and "Ingredients" in matched_items.columns:
+                    for _, irow in matched_items.iterrows():
+                        ing_n = str(irow.get("Ingredients", "")).strip()
+                        if ing_n and ing_n.lower() != "nan" and ing_n.lower() != "ingredients":
+                            q_val = extract_numeric(irow.get("Qtty.", 1))
+                            u_val = str(irow.get("Unit", "g")).strip()
+                            if not u_val or u_val.lower() == "nan":
+                                u_val = "g"
+                            
+                            st.markdown(f"""
+                            <div class="ing-card">
+                                <span class="ing-title">{ing_n}</span>
+                                <span class="ing-amount">{q_val:g} {u_val}</span>
+                            </div>
+                            """, unsafe_allow_html=True)
                 else:
-                    st.info("تم تحميل المكونات من جدول البيانات." if is_ar else "Ingredients loaded from Google Sheet.")
-            else:
-                st.info("لا توجد تفاصيل إضافية مسجلة لهذه الوصفة." if is_ar else "Detailed ingredient rows loaded from Google Sheet.")
+                    st.info("تم تحميل المكونات الأساسية." if is_ar else "Ingredients loaded from master sheet.")
 
+            # Right Column: Method Steps with Checkboxes
+            with col_steps:
+                st.markdown(f"**{'👨‍🍳 خطوات التحضير:' if is_ar else '👨‍🍳 Preparation Steps:'}**")
+                raw_method = ""
+                if not matched_items.empty and "Method" in matched_items.columns:
+                    method_vals = matched_items["Method"].dropna().tolist()
+                    if method_vals:
+                        raw_method = str(method_vals[0]).strip()
+
+                if raw_method and raw_method.lower() != "none" and raw_method.lower() != "nan":
+                    # Parse steps by numbers (1. , 2. ) or line breaks
+                    steps = [s.strip() for s in re.split(r'\n+|\d+\.\s*', raw_method) if len(s.strip()) > 3]
+                    if not steps:
+                        steps = [raw_method]
+
+                    for idx, step_text in enumerate(steps, 1):
+                        step_key = f"step_{rec['clean_name']}_{idx}"
+                        c_chk, c_desc = st.columns([0.15, 0.85])
+                        with c_chk:
+                            is_done = st.checkbox("", key=step_key, value=st.session_state.recipe_steps_checked.get(step_key, False), label_visibility="collapsed")
+                            st.session_state.recipe_steps_checked[step_key] = is_done
+                        with c_desc:
+                            if is_done:
+                                st.markdown(f"<span style='text-decoration: line-through; color: #94A3B8; font-weight:500;'><b>{idx}.</b> {step_text}</span>", unsafe_allow_html=True)
+                            else:
+                                st.markdown(f"<span style='color: #1E293B; font-weight:600;'><b>{idx}.</b> {step_text}</span>", unsafe_allow_html=True)
+                else:
+                    st.info("لا توجد تعليمات تحضير مفصلة لهذه الوصفة." if is_ar else "No step-by-step instructions recorded for this meal.")
+
+        # Tab 2: Donut Chart & Detailed Caloric Equivalence
         with guide_tab2:
-            total_macro_cals = (rec['pro'] * 4) + (rec['carb'] * 4) + (rec['fat'] * 9)
-            if total_macro_cals > 0:
-                p_pct = round(((rec['pro'] * 4) / total_macro_cals) * 100)
-                c_pct = round(((rec['carb'] * 4) / total_macro_cals) * 100)
-                f_pct = round(((rec['fat'] * 9) / total_macro_cals) * 100)
+            st.markdown(f"#### {'توزيع السعرات الحرارية حسب الماكروز' if is_ar else 'Caloric Contribution by Macro'}")
+            
+            pro_kcal = float(rec['pro']) * 4
+            carb_kcal = float(rec['carb']) * 4
+            fat_kcal = float(rec['fat']) * 9
+            total_macro_cals = pro_kcal + carb_kcal + fat_kcal
 
-                c_pct1, c_pct2, c_pct3 = st.columns(3)
-                c_pct1.success(f"{'البروتين' if is_ar else 'Protein'}: {p_pct}% ({rec['pro'] * 4:.0f} kcal)")
-                c_pct2.warning(f"{'الكاربوهيدرات' if is_ar else 'Carbs'}: {c_pct}% ({rec['carb'] * 4:.0f} kcal)")
-                c_pct3.error(f"{'الدهون' if is_ar else 'Fat'}: {f_pct}% ({rec['fat'] * 9:.0f} kcal)")
+            if total_macro_cals > 0:
+                p_pct = round((pro_kcal / total_macro_cals) * 100)
+                c_pct = round((carb_kcal / total_macro_cals) * 100)
+                f_pct = round((fat_kcal / total_macro_cals) * 100)
+
+                chart_col, legend_col = st.columns([1, 1.2], gap="large")
+
+                with chart_col:
+                    # Render Donut SVG
+                    donut_html = generate_donut_chart_svg(pro_kcal, carb_kcal, fat_kcal, rec['cals'])
+                    st.markdown(donut_html, unsafe_allow_html=True)
+
+                with legend_col:
+                    st.markdown(f"<div style='height: 10px;'></div>", unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:12px; padding:12px; margin-bottom:10px;">
+                        <span style="font-weight:700; color:#059669;">{'البروتين (4 kcal/g)' if is_ar else 'Protein (4 kcal/g)'}</span>
+                        <div style="font-size:1.15rem; font-weight:800; color:#047857;">{rec['pro']:.1f}g ({pro_kcal:.0f} kcal) — {p_pct}%</div>
+                    </div>
+                    <div style="background:#FEFCE8; border:1px solid #FEF08A; border-radius:12px; padding:12px; margin-bottom:10px;">
+                        <span style="font-weight:700; color:#CA8A04;">{'الكاربوهيدرات (4 kcal/g)' if is_ar else 'Carbohydrates (4 kcal/g)'}</span>
+                        <div style="font-size:1.15rem; font-weight:800; color:#A16207;">{rec['carb']:.1f}g ({carb_kcal:.0f} kcal) — {c_pct}%</div>
+                    </div>
+                    <div style="background:#FFF1F2; border:1px solid #FECDD3; border-radius:12px; padding:12px;">
+                        <span style="font-weight:700; color:#E11D48;">{'الدهون (9 kcal/g)' if is_ar else 'Total Fat (9 kcal/g)'}</span>
+                        <div style="font-size:1.15rem; font-weight:800; color:#BE123C;">{rec['fat']:.1f}g ({fat_kcal:.0f} kcal) — {f_pct}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 else:
     def display_recipe_dialog(rec):
         st.session_state.active_modal_recipe = rec
@@ -730,16 +878,6 @@ elif st.session_state.page == 2:
                                                     "category": ing_cat
                                                 }
                                 st.rerun()
-
-            # Fallback inline preview for older versions without modal support
-            if not hasattr(st, "dialog") and st.session_state.active_modal_recipe:
-                rec = st.session_state.active_modal_recipe
-                st.markdown("<hr style='border:0; border-top:2px solid #10B981; margin: 30px 0;'>", unsafe_allow_html=True)
-                title_view = f"📖 {rec['name_ar']} ({rec['name']})" if is_ar else f"📖 {rec['name']} ({rec['name_ar']})"
-                st.markdown(f"### {title_view}")
-                if st.button("Close Guide" if not is_ar else "إغلاق الدليل"):
-                    st.session_state.active_modal_recipe = None
-                    st.rerun()
 
     # ==========================================
     # TAB 2: NOTE-STYLE GROCERY LIST WITH CHECKBOXES
