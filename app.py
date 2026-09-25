@@ -1,408 +1,462 @@
 import streamlit as st
 import pandas as pd
-import requests
-import io
-import re
+import datetime
 import os
-from google import genai
-from typing import Dict, Any, List
 
-# =========================================================
-# 1. PAGE CONFIG & BRAND STYLING
-# =========================================================
+# ==========================================
+# 1. PAGE SETUP & MODERN CSS
+# ==========================================
 st.set_page_config(
     page_title="Munch Me | Smart Nutrition & Chef Assistant",
-    page_icon="🥗",
+    page_icon="🍏",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    
     html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        color: #242D35;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        background-color: #F8FAFC;
+        color: #1E293B;
     }
 
-    .stApp {
-        background-color: #F9FAFB;
-    }
-
-    /* Vibrant Primary Actions - Peach Coral */
-    .stButton>button {
-        background: linear-gradient(135deg, #FF6B58 0%, #FF8575 100%) !important;
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
+    /* Primary Accent Buttons */
+    .stButton > button {
         border-radius: 12px !important;
+        font-weight: 700 !important;
         border: none !important;
-        padding: 0.5rem 1.25rem !important;
-        box-shadow: 0 4px 12px rgba(255, 107, 88, 0.25) !important;
+        transition: all 0.2s ease-in-out !important;
+        padding: 0.55rem 1.25rem !important;
     }
-    .stButton>button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 16px rgba(255, 107, 88, 0.35) !important;
+    
+    /* Segmented/Option Button Styling */
+    div[data-testid="stHorizontalBlock"] .stButton > button {
+        background-color: #FFFFFF;
+        color: #475569;
+        border: 1.5px solid #E2E8F0 !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    div[data-testid="stHorizontalBlock"] .stButton > button:hover {
+        border-color: #10B981 !important;
+        color: #10B981;
     }
 
+    /* Metric Cards */
     .metric-card {
-        background: #FFFFFF;
+        background: white;
         border-radius: 16px;
-        padding: 16px 20px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        border: 1px solid #E5E7EB;
+        padding: 1.25rem;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.05);
+        border: 1px solid #F1F5F9;
         text-align: center;
     }
 
+    /* Recipe / Meal Cards */
     .recipe-card {
-        background: #FFFFFF;
-        border-radius: 16px;
-        padding: 16px;
-        border: 1px solid #E5E7EB;
+        background: white;
+        border-radius: 20px;
+        border: 1.5px solid #E2E8F0;
+        overflow: hidden;
         box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-        margin-bottom: 20px;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
     }
-
-    .badge-category {
-        background-color: #E6FAF8;
-        color: #2EC4B6;
+    .recipe-card-header {
+        position: relative;
+        height: 160px;
+        background-color: #F1F5F9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .recipe-card-header img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .badge-count {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        background: rgba(30, 41, 59, 0.85);
+        color: white;
         padding: 4px 10px;
         border-radius: 20px;
-        font-weight: 700;
         font-size: 0.75rem;
-        display: inline-block;
-        margin-bottom: 8px;
+        font-weight: 700;
     }
+    .recipe-card-body {
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+    }
+    .macro-pill {
+        border-radius: 10px;
+        padding: 6px 10px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-align: center;
+    }
+    .macro-p { background-color: #ECFDF5; color: #059669; }
+    .macro-c { background-color: #FEF9C3; color: #CA8A04; }
+    .macro-f { background-color: #FFE4E6; color: #E11D48; }
 
-    .pill {
-        display: inline-block;
-        padding: 3px 8px;
-        border-radius: 8px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        margin-right: 4px;
+    /* Progress Bar */
+    .stProgress > div > div > div > div {
+        background-color: #10B981 !important;
+        border-radius: 10px;
     }
-    .pill-cal { background: #F1F5F9; color: #242D35; }
-    .pill-p { background: #FFEBE9; color: #FF6B58; }
-    .pill-c { background: #E6FAF8; color: #2EC4B6; }
-    .pill-f { background: #FFF7E6; color: #D97706; }
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================================
-# 2. SESSION STATE
-# =========================================================
-if "user_profile" not in st.session_state:
-    st.session_state.user_profile = None
+# ==========================================
+# 2. SESSION STATE MANAGEMENT
+# ==========================================
+if "page" not in st.session_state:
+    st.session_state.page = 1
 
-if "daily_log" not in st.session_state:
-    st.session_state.daily_log = []
+if "user" not in st.session_state:
+    st.session_state.user = {
+        "name": "",
+        "dob": datetime.date(2000, 1, 1),
+        "gender": "Female",
+        "height_val": 165.0,
+        "height_unit": "cm",
+        "weight_val": 60.0,
+        "weight_unit": "kg",
+        "goal": "Weight Loss",
+        "diet_type": "Balanced",
+        "daily_calories": 1800,
+        "target_protein": 120,
+        "target_carbs": 180,
+        "target_fat": 50,
+        "consumed_calories": 0,
+        "consumed_protein": 0,
+        "consumed_carbs": 0,
+        "consumed_fat": 0,
+        "selected_recipe": None
+    }
 
-if "water_intake_ml" not in st.session_state:
-    st.session_state.water_intake_ml = 0
-
-# =========================================================
-# 3. DATA LOADER & DRIVE LINK CONVERTER
-# =========================================================
+# ==========================================
+# 3. GOOGLE SHEETS DATA LOADER
+# ==========================================
 SHEET_ID = "1LQsOAfiVeFzsukc1FMfGtmJgx1IcOYxBbPy_PGuIXKw"
 
-def convert_drive_url(url: str) -> str:
-    if not url or not isinstance(url, str):
-        return ""
-    match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
-    if match:
-        return f"https://lh3.googleusercontent.com/d/{match.group(1)}"
-    match_id = re.search(r'id=([a-zA-Z0-9_-]+)', url)
-    if match_id:
-        return f"https://lh3.googleusercontent.com/d/{match_id.group(1)}"
-    return url
-
 @st.cache_data(ttl=600)
-def load_all_sheet_data():
-    def fetch_csv(gid: str, keyword: str = None) -> pd.DataFrame:
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
-        res = requests.get(url)
-        res.raise_for_status()
-        raw = pd.read_csv(io.StringIO(res.text), header=None)
-        if keyword:
-            m = raw[raw.apply(lambda r: r.astype(str).str.contains(keyword, case=False, na=False).any(), axis=1)]
-            if not m.empty:
-                idx = m.index[0]
-                df = raw.iloc[idx + 1:].copy()
-                df.columns = raw.iloc[idx].values
-            else:
-                df = pd.read_csv(io.StringIO(res.text))
-        else:
-            df = pd.read_csv(io.StringIO(res.text))
-        df.columns = [str(c).strip().lower().replace(" ", "_").replace(".", "") for c in df.columns]
+def load_sheet(gid):
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
+    try:
+        df = pd.read_csv(url)
+        df.columns = [str(c).strip() for c in df.columns]
         return df
+    except Exception:
+        return pd.DataFrame()
 
-    # Categories
-    cat = fetch_csv("0", "categor")
-    cat_col = [c for c in cat.columns if "categor" in c][0]
-    cat = cat.dropna(subset=[cat_col])
+# Load Data from GIDs provided
+recipes_summary_df = load_sheet("0")
+recipe_details_df = load_sheet("45255346")
+ingredients_master_df = load_sheet("1075366356")
 
-    # Recipes
-    rec = fetch_csv("45255346", "ingredient")
-    meal_col = [c for c in rec.columns if "meal" in c or "recipe" in c or "item" in c]
-    m_col_name = meal_col[0] if meal_col else rec.columns[0]
-    rec[m_col_name] = rec[m_col_name].ffill()
-    ing_col = [c for c in rec.columns if "ingred" in c]
-    if ing_col:
-        rec = rec.dropna(subset=[ing_col[0]])
+# ==========================================
+# 4. HEADER BRANDING & LOGO
+# ==========================================
+col_logo, col_title = st.columns([1, 6])
+with col_logo:
+    if os.path.exists("logo.png"):
+        st.image("logo.png", width=95)
+    else:
+        st.markdown("<h1 style='color:#10B981; margin:0;'>🍏</h1>", unsafe_allow_html=True)
 
-    return cat, rec, m_col_name
+with col_title:
+    st.markdown("<h2 style='margin-bottom:0; font-weight:800; color:#0F172A;'>Munch Me</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#64748B; margin-top:0; font-size:0.95rem;'>Smart Nutrition & Chef Assistant</p>", unsafe_allow_html=True)
 
-try:
-    categories_df, recipes_df, meal_col_name = load_all_sheet_data()
-except Exception as e:
-    st.error(f"Error connecting to Google Sheets: {e}")
-    st.stop()
+st.markdown("<hr style='border:0; border-top:1px solid #E2E8F0; margin: 10px 0 25px 0;'>", unsafe_allow_html=True)
 
-# =========================================================
-# 4. ONBOARDING MODAL / SCREEN
-# =========================================================
-if st.session_state.user_profile is None:
-    st.markdown("<h2 style='text-align: center; color: #242D35;'>Welcome to Munch Me 🥗</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #64748B;'>Set up your profile to personalize your daily targets and meal planning.</p>", unsafe_allow_html=True)
 
-    _, col, _ = st.columns([1, 2, 1])
-    with col:
-        with st.form("onboarding_form"):
-            st.subheader("Your Personal Metrics")
-            gender = st.radio("Biological Sex", ["Female", "Male"], horizontal=True)
-            c1, c2 = st.columns(2)
-            age = c1.number_input("Age (years)", min_value=15, max_value=95, value=28)
-            weight = c2.number_input("Weight (kg)", min_value=35.0, max_value=200.0, value=68.0, step=0.5)
-            height = c1.number_input("Height (cm)", min_value=120.0, max_value=220.0, value=165.0, step=0.5)
-            activity = c2.selectbox("Activity Level", ["Sedentary (mostly seated)", "Lightly Active (1-3 days/wk)", "Moderately Active (3-5 days/wk)", "Very Active (6-7 days/wk)"])
+# ==============================================================================
+# PAGE 1: USER PROFILE & ONBOARDING
+# ==============================================================================
+if st.session_state.page == 1:
+    st.markdown("### Profile & Nutrition Goals")
+    st.caption("Complete your physiological parameters to configure your meal matrix.")
 
-            st.subheader("Dietary Strategy")
-            c3, c4 = st.columns(2)
-            goal = c3.selectbox("Goal", ["Weight Loss", "Maintenance", "Muscle Gain"])
-            protocol = c4.selectbox("Protocol", ["Balanced", "High Protein", "Low Carb", "Keto"])
+    col1, col2 = st.columns(2, gap="large")
 
-            submit = st.form_submit_button("Lock In My Personal Plan ✨")
-            if submit:
-                # Mifflin-St Jeor
-                if gender == "Male":
-                    bmr = (10 * weight) + (6.25 * height) - (5 * age) + 5
-                else:
-                    bmr = (10 * weight) + (6.25 * height) - (5 * age) - 161
+    with col1:
+        st.session_state.user["name"] = st.text_input("Full Name", value=st.session_state.user["name"], placeholder="e.g. Sarah Al-Ahmad")
+        
+        # Date of Birth Calendar Picker
+        st.session_state.user["dob"] = st.date_input(
+            "Date of Birth (Calendar Select)",
+            value=st.session_state.user["dob"],
+            min_value=datetime.date(1940, 1, 1),
+            max_value=datetime.date.today()
+        )
 
-                mult = {"Sedentary (mostly seated)": 1.2, "Lightly Active (1-3 days/wk)": 1.375, "Moderately Active (3-5 days/wk)": 1.55, "Very Active (6-7 days/wk)": 1.725}[activity]
-                tdee = bmr * mult
-                cal_mod = {"Weight Loss": -450, "Maintenance": 0, "Muscle Gain": 350}[goal]
-                target_cal = max(1200, tdee + cal_mod)
+        # Gender Selection Buttons
+        st.markdown("<label style='font-size:0.9rem; font-weight:600;'>Biological Sex</label>", unsafe_allow_html=True)
+        g_col1, g_col2 = st.columns(2)
+        if g_col1.button("👩 Female", use_container_width=True, type="primary" if st.session_state.user["gender"] == "Female" else "secondary"):
+            st.session_state.user["gender"] = "Female"
+            st.rerun()
+        if g_col2.button("👨 Male", use_container_width=True, type="primary" if st.session_state.user["gender"] == "Male" else "secondary"):
+            st.session_state.user["gender"] = "Male"
+            st.rerun()
 
-                p_pct, c_pct, f_pct = {
-                    "Balanced": (0.25, 0.50, 0.25),
-                    "High Protein": (0.35, 0.40, 0.25),
-                    "Low Carb": (0.30, 0.20, 0.50),
-                    "Keto": (0.20, 0.05, 0.75)
-                }[protocol]
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
-                st.session_state.user_profile = {
-                    "gender": gender, "age": age, "weight": weight, "height": height,
-                    "target_cal": round(target_cal),
-                    "protein_g": round((target_cal * p_pct) / 4),
-                    "carbs_g": round((target_cal * c_pct) / 4),
-                    "fat_g": round((target_cal * f_pct) / 9),
-                    "water_target_ml": round(weight * 35),
-                    "protocol": protocol, "goal": goal
-                }
+        # Height with Unit Picker
+        h_col1, h_col2 = st.columns([3, 2])
+        with h_col1:
+            st.session_state.user["height_val"] = st.number_input("Height", value=float(st.session_state.user["height_val"]), step=0.5)
+        with h_col2:
+            st.session_state.user["height_unit"] = st.selectbox("Height Unit", ["cm", "inch", "foot"], index=["cm", "inch", "foot"].index(st.session_state.user["height_unit"]))
+
+        # Weight with Unit Picker
+        w_col1, w_col2 = st.columns([3, 2])
+        with w_col1:
+            st.session_state.user["weight_val"] = st.number_input("Weight", value=float(st.session_state.user["weight_val"]), step=0.5)
+        with w_col2:
+            st.session_state.user["weight_unit"] = st.selectbox("Weight Unit", ["kg", "pound"], index=["kg", "pound"].index(st.session_state.user["weight_unit"]))
+
+    with col2:
+        # Goal Buttons
+        st.markdown("<label style='font-size:0.9rem; font-weight:600;'>Primary Goal</label>", unsafe_allow_html=True)
+        goal_options = ["Weight Loss", "Muscle Gain", "Maintenance", "Endurance"]
+        btn_cols = st.columns(2)
+        for i, g in enumerate(goal_options):
+            col_target = btn_cols[i % 2]
+            if col_target.button(g, key=f"goal_{g}", use_container_width=True, type="primary" if st.session_state.user["goal"] == g else "secondary"):
+                st.session_state.user["goal"] = g
                 st.rerun()
-    st.stop()
 
-# =========================================================
-# 5. DASHBOARD & REMAINING MACRO BUDGET
-# =========================================================
-prof = st.session_state.user_profile
+        st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
 
-c_head1, c_head2 = st.columns([3, 1])
-c_head1.markdown(f"### 👋 Target: **{prof['target_cal']} kcal** ({prof['protocol']} Plan)")
-if c_head2.button("⚙️ Edit Profile"):
-    st.session_state.user_profile = None
-    st.rerun()
+        # Diet Type Buttons (formerly Protocol)
+        st.markdown("<label style='font-size:0.9rem; font-weight:600;'>Type of Diet</label>", unsafe_allow_html=True)
+        diet_options = ["Balanced", "High Protein", "Low Carb", "Keto", "Vegetarian"]
+        d_cols = st.columns(3)
+        for i, d in enumerate(diet_options):
+            col_target = d_cols[i % 3]
+            if col_target.button(d, key=f"diet_{d}", use_container_width=True, type="primary" if st.session_state.user["diet_type"] == d else "secondary"):
+                st.session_state.user["diet_type"] = d
+                st.rerun()
 
-# Dynamic Depletion
-c_cal = sum(m['calories'] for m in st.session_state.daily_log)
-c_p = sum(m['protein'] for m in st.session_state.daily_log)
-c_c = sum(m['carbs'] for m in st.session_state.daily_log)
-c_f = sum(m['fat'] for m in st.session_state.daily_log)
+        st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
 
-rem_cal = max(0, prof['target_cal'] - c_cal)
-rem_p = max(0, prof['protein_g'] - c_p)
-rem_c = max(0, prof['carbs_g'] - c_c)
-rem_f = max(0, prof['fat_g'] - c_f)
+        # Transition Button to Page 2
+        if st.button("Continue to Meal Dashboard →", type="primary", use_container_width=True):
+            # Unit conversions to metric for BMR
+            weight_kg = st.session_state.user["weight_val"]
+            if st.session_state.user["weight_unit"] == "pound":
+                weight_kg = weight_kg * 0.453592
 
-m1, m2, m3, m4, m5 = st.columns(5)
-m1.markdown(f"<div class='metric-card'><h4 style='color:#FF6B58; margin:0;'>Calories Left</h4><h2 style='margin:4px 0;'>{rem_cal}</h2><small style='color:#64748B;'>Target: {prof['target_cal']} kcal</small></div>", unsafe_allow_html=True)
-m2.markdown(f"<div class='metric-card'><h4 style='color:#FF6B58; margin:0;'>Protein</h4><h2 style='margin:4px 0;'>{rem_p}g</h2><small style='color:#64748B;'>Consumed: {c_p}g</small></div>", unsafe_allow_html=True)
-m3.markdown(f"<div class='metric-card'><h4 style='color:#2EC4B6; margin:0;'>Carbs</h4><h2 style='margin:4px 0;'>{rem_c}g</h2><small style='color:#64748B;'>Consumed: {c_c}g</small></div>", unsafe_allow_html=True)
-m4.markdown(f"<div class='metric-card'><h4 style='color:#FFB703; margin:0;'>Fats</h4><h2 style='margin:4px 0;'>{rem_f}g</h2><small style='color:#64748B;'>Consumed: {c_f}g</small></div>", unsafe_allow_html=True)
+            height_cm = st.session_state.user["height_val"]
+            if st.session_state.user["height_unit"] == "inch":
+                height_cm = height_cm * 2.54
+            elif st.session_state.user["height_unit"] == "foot":
+                height_cm = height_cm * 30.48
 
-with m5:
-    st.markdown(f"<div class='metric-card'><h4 style='color:#2EC4B6; margin:0;'>Water Intake</h4><h2 style='margin:4px 0;'>{st.session_state.water_intake_ml} ml</h2><small style='color:#64748B;'>Goal: {prof['water_target_ml']} ml</small></div>", unsafe_allow_html=True)
-    w1, w2 = st.columns(2)
-    if w1.button("+250ml"):
-        st.session_state.water_intake_ml += 250
-        st.rerun()
-    if w2.button("+500ml"):
-        st.session_state.water_intake_ml += 500
-        st.rerun()
+            age = max(18, (datetime.date.today() - st.session_state.user["dob"]).days // 365)
 
-st.markdown("<hr style='margin: 20px 0; border: 0.5px solid #E5E7EB;'/>", unsafe_allow_html=True)
+            # Clinical Mifflin-St Jeor Formula
+            if st.session_state.user["gender"] == "Male":
+                bmr = (10 * weight_kg) + (6.25 * height_cm) - (5 * age) + 5
+            else:
+                bmr = (10 * weight_kg) + (6.25 * height_cm) - (5 * age) - 161
 
-# =========================================================
-# 6. APP TABS: CHOOSE MEALS, EATEN TODAY, GROCERY, AI CHEF
-# =========================================================
-tab_meals, tab_today, tab_grocery, tab_ai = st.tabs([
-    "🍽️ Choose & Log Meals",
-    f"📋 Eaten Today ({len(st.session_state.daily_log)})",
-    "🛒 Auto Grocery List",
-    "👨‍🍳 Munch Me Chef Assistant"
-])
+            tdee = bmr * 1.375
 
-with tab_meals:
-    cat_field = [c for c in categories_df.columns if "categor" in c][0]
-    item_field = [c for c in categories_df.columns if "item" in c or "menu" in c][0]
+            # Goal Calorie Adjustment
+            if st.session_state.user["goal"] == "Weight Loss":
+                target_kcal = tdee - 450
+            elif st.session_state.user["goal"] == "Muscle Gain":
+                target_kcal = tdee + 350
+            else:
+                target_kcal = tdee
 
-    categories_list = ["All Categories"] + sorted(list(categories_df[cat_field].dropna().unique()))
-    selected_cat = st.selectbox("Category", categories_list)
-    search_query = st.text_input("🔍 Search recipe or ingredient...", "")
+            st.session_state.user["daily_calories"] = int(target_kcal)
+            st.session_state.user["target_protein"] = int((target_kcal * 0.28) / 4)
+            st.session_state.user["target_carbs"] = int((target_kcal * 0.42) / 4)
+            st.session_state.user["target_fat"] = int((target_kcal * 0.30) / 9)
 
-    filtered = categories_df.copy()
-    if selected_cat != "All Categories":
-        filtered = filtered[filtered[cat_field] == selected_cat]
-    if search_query:
-        filtered = filtered[filtered[item_field].str.contains(search_query, case=False, na=False)]
+            st.session_state.page = 2
+            st.rerun()
 
-    st.caption(f"Showing {len(filtered)} recipes")
 
-    cols = st.columns(3)
-    for idx, (_, item) in enumerate(filtered.iterrows()):
-        col = cols[idx % 3]
-        meal_name = item[item_field]
-        recipe_rows = recipes_df[recipes_df[meal_col_name].str.strip().str.lower() == str(meal_name).strip().lower()]
+# ==============================================================================
+# PAGE 2: MEAL DASHBOARD & RECIPES
+# ==============================================================================
+elif st.session_state.page == 2:
+    nav_col1, nav_col2 = st.columns([6, 1])
+    with nav_col1:
+        st.markdown("### Meal & Recipe Nutrition Dashboard")
+        st.caption("Interactive meal macro analysis, image representation & preparation guide")
+    with nav_col2:
+        if st.button("← Edit Profile", use_container_width=True):
+            st.session_state.page = 1
+            st.rerun()
 
-        with col:
-            st.markdown("<div class='recipe-card'>", unsafe_allow_html=True)
-            st.markdown(f"<span class='badge-category'>{item.get(cat_field, 'Meal')}</span>", unsafe_allow_html=True)
-            st.markdown(f"<h4 style='margin: 0 0 8px 0;'>{meal_name}</h4>", unsafe_allow_html=True)
+    # Progress & Depletion Bars
+    cal_left = max(0, st.session_state.user["daily_calories"] - st.session_state.user["consumed_calories"])
+    pro_left = max(0, st.session_state.user["target_protein"] - st.session_state.user["consumed_protein"])
+    carb_left = max(0, st.session_state.user["target_carbs"] - st.session_state.user["consumed_carbs"])
+    fat_left = max(0, st.session_state.user["target_fat"] - st.session_state.user["consumed_fat"])
 
-            # Direct Image URL
-            img_url = ""
-            if not recipe_rows.empty:
-                img_col = [c for c in recipe_rows.columns if "image" in c or "url" in c]
-                if img_col:
-                    img_url = convert_drive_url(recipe_rows.iloc[0][img_col[0]])
-            if img_url:
-                st.image(img_url, use_container_width=True)
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        st.markdown(f"""
+        <div class="metric-card">
+            <span style="font-size: 0.85rem; color: #64748B; font-weight:700;">ENERGY</span>
+            <h3 style="margin:4px 0 0 0; color:#0F172A;">{st.session_state.user['consumed_calories']} <span style="font-size:0.9rem; font-weight:500;">/ {st.session_state.user['daily_calories']} kcal</span></h3>
+            <p style="margin:0; font-size:0.8rem; color:#10B981; font-weight:700;">{cal_left} kcal left</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.progress(min(1.0, st.session_state.user["consumed_calories"] / max(1, st.session_state.user["daily_calories"])))
 
-            # Numerical macros
-            cal_col = [c for c in item.index if "cal" in c or "kcal" in c][0]
-            p_col = [c for c in item.index if "prot" in c][0]
-            c_col = [c for c in item.index if "carb" in c][0]
-            f_col = [c for c in item.index if "fat" in c][0]
+    with m2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <span style="font-size: 0.85rem; color: #059669; font-weight:700;">PROTEIN</span>
+            <h3 style="margin:4px 0 0 0; color:#0F172A;">{st.session_state.user['consumed_protein']} <span style="font-size:0.9rem; font-weight:500;">/ {st.session_state.user['target_protein']} g</span></h3>
+            <p style="margin:0; font-size:0.8rem; color:#059669; font-weight:700;">{pro_left}g left</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.progress(min(1.0, st.session_state.user["consumed_protein"] / max(1, st.session_state.user["target_protein"])))
 
-            m_cal = round(pd.to_numeric(item.get(cal_col, 0), errors='coerce') or 0)
-            m_p = round(pd.to_numeric(item.get(p_col, 0), errors='coerce') or 0)
-            m_c = round(pd.to_numeric(item.get(c_col, 0), errors='coerce') or 0)
-            m_f = round(pd.to_numeric(item.get(f_col, 0), errors='coerce') or 0)
+    with m3:
+        st.markdown(f"""
+        <div class="metric-card">
+            <span style="font-size: 0.85rem; color: #CA8A04; font-weight:700;">CARBS</span>
+            <h3 style="margin:4px 0 0 0; color:#0F172A;">{st.session_state.user['consumed_carbs']} <span style="font-size:0.9rem; font-weight:500;">/ {st.session_state.user['target_carbs']} g</span></h3>
+            <p style="margin:0; font-size:0.8rem; color:#CA8A04; font-weight:700;">{carb_left}g left</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.progress(min(1.0, st.session_state.user["consumed_carbs"] / max(1, st.session_state.user["target_carbs"])))
 
-            st.markdown(f"""
-                <div style='margin: 8px 0;'>
-                    <span class='pill pill-cal'>{m_cal} kcal</span>
-                    <span class='pill pill-p'>P: {m_p}g</span>
-                    <span class='pill pill-c'>C: {m_c}g</span>
-                    <span class='pill pill-f'>F: {m_f}g</span>
+    with m4:
+        st.markdown(f"""
+        <div class="metric-card">
+            <span style="font-size: 0.85rem; color: #E11D48; font-weight:700;">FAT</span>
+            <h3 style="margin:4px 0 0 0; color:#0F172A;">{st.session_state.user['consumed_fat']} <span style="font-size:0.9rem; font-weight:500;">/ {st.session_state.user['target_fat']} g</span></h3>
+            <p style="margin:0; font-size:0.8rem; color:#E11D48; font-weight:700;">{fat_left}g left</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.progress(min(1.0, st.session_state.user["consumed_fat"] / max(1, st.session_state.user["target_fat"])))
+
+    st.markdown("<hr style='border:0; border-top:1px solid #E2E8F0; margin: 25px 0;'>", unsafe_allow_html=True)
+
+    # Recipe Cards Display
+    if recipes_summary_df.empty:
+        st.warning("Connecting to Google Sheets... Ensure your Google Sheet is set to 'Anyone with the link can view'.")
+    else:
+        # Normalize column names
+        recipes = recipes_summary_df.to_dict(orient="records")
+        cols = st.columns(4)
+
+        for idx, recipe in enumerate(recipes):
+            with cols[idx % 4]:
+                name = recipe.get("Recipe Name", recipe.get("name", recipe.get("Name", f"Recipe #{idx+1}")))
+                cals = recipe.get("Calories", recipe.get("calories", recipe.get("Energy", 350)))
+                pro = recipe.get("Protein", recipe.get("protein", 25))
+                carb = recipe.get("Carbs", recipe.get("carbs", 35))
+                fat = recipe.get("Fat", recipe.get("fat", 12))
+                img_url = recipe.get("Image", recipe.get("image", recipe.get("Image URL", "")))
+                item_count = recipe.get("Items", recipe.get("items", 4))
+
+                st.markdown(f"""
+                <div class="recipe-card">
+                    <div class="recipe-card-header">
+                        {f'<img src="{img_url}">' if img_url and str(img_url).startswith('http') else '<div style="font-size:3.5rem; color:#CBD5E1;">🍽️</div>'}
+                        <div class="badge-count">🍽️ {item_count} items</div>
+                    </div>
+                    <div class="recipe-card-body">
+                        <div style="font-weight:700; font-size:1.05rem; color:#0F172A; min-height:48px; line-height:1.3;">{name}</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin: 10px 0;">
+                            <div>
+                                <span style="font-size:0.75rem; color:#64748B; font-weight:700;">ENERGY</span>
+                                <div style="font-weight:800; font-size:1rem; color:#0F172A;">🔥 {cals} kcal</div>
+                            </div>
+                        </div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; margin-bottom:12px;">
+                            <div class="macro-pill macro-p">P {pro}g</div>
+                            <div class="macro-pill macro-c">C {carb}g</div>
+                            <div class="macro-pill macro-f">F {fat}g</div>
+                        </div>
+                    </div>
                 </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
-            with st.expander("📖 View Recipe & Method"):
-                if not recipe_rows.empty:
-                    meth_col = [c for c in recipe_rows.columns if "method" in c or "prep" in c]
-                    if meth_col:
-                        st.write(f"**Preparation:**\n{recipe_rows.iloc[0][meth_col[0]]}")
-                    st.write("**Ingredients:**")
-                    ing_c = [c for c in recipe_rows.columns if "ingred" in c][0]
-                    qty_c = [c for c in recipe_rows.columns if "qtty" in c or "qty" in c][0]
-                    unit_c = [c for c in recipe_rows.columns if "unit" in c][0]
-                    for _, r in recipe_rows.iterrows():
-                        st.write(f"• {r[ing_c]}: {r[qty_c]} {r[unit_c]}")
+                c_action1, c_action2 = st.columns(2)
+                with c_action1:
+                    if st.button("View Guide", key=f"guide_{idx}", use_container_width=True):
+                        st.session_state.user["selected_recipe"] = {
+                            "name": name,
+                            "cals": cals,
+                            "pro": pro,
+                            "carb": carb,
+                            "fat": fat,
+                            "details": recipe
+                        }
+                        st.rerun()
 
-            if st.button(f"+ Log for Today", key=f"btn_{idx}_{meal_name}"):
-                st.session_state.daily_log.append({
-                    "name": meal_name,
-                    "calories": m_cal, "protein": m_p, "carbs": m_c, "fat": m_f,
-                    "ingredients": recipe_rows.to_dict('records') if not recipe_rows.empty else []
-                })
-                st.success(f"Added {meal_name}!")
+                with c_action2:
+                    if st.button("+ Eat", key=f"eat_{idx}", use_container_width=True):
+                        st.session_state.user["consumed_calories"] += int(float(cals))
+                        st.session_state.user["consumed_protein"] += int(float(pro))
+                        st.session_state.user["consumed_carbs"] += int(float(carb))
+                        st.session_state.user["consumed_fat"] += int(float(fat))
+                        st.rerun()
+
+    # Modal Guide / Nutrition Analytics
+    if st.session_state.user["selected_recipe"] is not None:
+        rec = st.session_state.user["selected_recipe"]
+        st.markdown("<hr style='border:0; border-top:2px solid #10B981; margin: 30px 0;'>", unsafe_allow_html=True)
+        
+        with st.container():
+            st.markdown(f"## 📖 {rec['name']}")
+            m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+            m_col1.metric("Calories", f"{rec['cals']} kcal")
+            m_col2.metric("Protein", f"{rec['pro']} g")
+            m_col3.metric("Carbs", f"{rec['carb']} g")
+            m_col4.metric("Fat", f"{rec['fat']} g")
+
+            tab1, tab2 = st.tabs(["📝 Recipe Instructions & Ingredients", "📊 Nutritional Macro Analytics"])
+
+            with tab1:
+                # Find matching ingredients from the detailed table
+                st.markdown("#### Ingredients Baseline")
+                if not recipe_details_df.empty:
+                    # Filter matching recipe details
+                    matched_items = recipe_details_df[
+                        recipe_details_df.astype(str).apply(lambda row: rec['name'].lower() in row.to_string().lower(), axis=1)
+                    ]
+                    if not matched_items.empty:
+                        st.dataframe(matched_items, use_container_width=True)
+                    else:
+                        st.info("Ingredients and preparation instructions loaded directly from your Google Sheet.")
+                else:
+                    st.info("Reference ingredients loaded from Google Sheet table.")
+
+            with tab2:
+                st.markdown("#### Caloric Contribution by Macro")
+                total_macro_cals = (float(rec['pro']) * 4) + (float(rec['carb']) * 4) + (float(rec['fat']) * 9)
+                if total_macro_cals > 0:
+                    p_pct = round(((float(rec['pro']) * 4) / total_macro_cals) * 100)
+                    c_pct = round(((float(rec['carb']) * 4) / total_macro_cals) * 100)
+                    f_pct = round(((float(rec['fat']) * 9) / total_macro_cals) * 100)
+
+                    c_pct1, c_pct2, c_pct3 = st.columns(3)
+                    c_pct1.success(f"Protein: {p_pct}% ({float(rec['pro']) * 4:.0f} kcal)")
+                    c_pct2.warning(f"Carbohydrates: {c_pct}% ({float(rec['carb']) * 4:.0f} kcal)")
+                    c_pct3.error(f"Fat: {f_pct}% ({float(rec['fat']) * 9:.0f} kcal)")
+
+            if st.button("Close Recipe Guide", type="secondary"):
+                st.session_state.user["selected_recipe"] = None
                 st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
-
-with tab_today:
-    if not st.session_state.daily_log:
-        st.info("No meals logged yet today.")
-    else:
-        for i, logged in enumerate(st.session_state.daily_log):
-            c1, c2, c3 = st.columns([3, 2, 1])
-            c1.markdown(f"**{logged['name']}**")
-            c2.markdown(f"{logged['calories']} kcal | P: {logged['protein']}g | C: {logged['carbs']}g | F: {logged['fat']}g")
-            if c3.button("Remove", key=f"remove_{i}"):
-                st.session_state.daily_log.pop(i)
-                st.rerun()
-
-with tab_grocery:
-    st.subheader("Consolidated Shopping List")
-    if not st.session_state.daily_log:
-        st.info("Log meals to compile your shopping list.")
-    else:
-        g_dict = {}
-        for m in st.session_state.daily_log:
-            for row in m.get('ingredients', []):
-                ing_key = [k for k in row.keys() if "ingred" in k]
-                qty_key = [k for k in row.keys() if "qtty" in k or "qty" in k]
-                unit_key = [k for k in row.keys() if "unit" in k]
-                if ing_key and qty_key and unit_key:
-                    name = str(row[ing_key[0]]).strip()
-                    unit = str(row[unit_key[0]]).strip()
-                    q = pd.to_numeric(row[qty_key[0]], errors='coerce') or 0.0
-                    g_dict[(name, unit)] = g_dict.get((name, unit), 0.0) + q
-
-        for (name, unit), total in sorted(g_dict.items()):
-            if name:
-                st.checkbox(f"**{name}**: {round(total, 1)} {unit}")
-
-with tab_ai:
-    st.subheader("👨‍🍳 Ask Munch Me Chef")
-    st.caption("Clinical substitutions, preparation techniques, and macro balancing.")
-    user_q = st.text_input("Ask a question about your meals or swaps:", placeholder="e.g. How can I increase protein in my lunch without extra fat?")
-    if st.button("Ask Assistant"):
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            st.warning("Please configure your GEMINI_API_KEY in Replit Secrets (Tools > Secrets).")
-        elif not user_q:
-            st.warning("Please enter a question first.")
-        else:
-            with st.spinner("Chef is formulating advice..."):
-                try:
-                    client = genai.Client(api_key=api_key)
-                    sys_prompt = f"""
-                    You are Munch Me Smart Chef & Nutrition Assistant.
-                    User Profile:
-                    - Protocol: {prof['protocol']}
-                    - Daily Target: {prof['target_cal']} kcal (P: {prof['protein_g']}g, C: {prof['carbs_g']}g, F: {prof['fat_g']}g)
-                    - Remaining Today: {rem_cal} kcal (P: {rem_p}g, C: {rem_c}g, F: {rem_f}g)
-
-                    Provide concise, practical culinary advice and ingredient substitutions.
-                    """
-                    resp = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=f"{sys_prompt}\nUser Question: {user_q}"
-                    )
-                    st.markdown(resp.text)
-                except Exception as err:
-                    st.error(f"AI Assistant Error: {err}")
-
