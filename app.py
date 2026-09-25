@@ -167,10 +167,39 @@ if "user" not in st.session_state:
     }
 
 # ==========================================
-# 4. GOOGLE SHEETS DATA LOADER
+# 4. MEAL SLOTS & CATEGORY HIERARCHY
 # ==========================================
+MEAL_STRUCTURE = {
+    "Breakfast": [
+        "Egg Breakfast",
+        "Breakfast Smoothies",
+        "Savory Breakfast",
+        "Sweet Breakfast"
+    ],
+    "Lunch": [
+        "Chicken Meals",
+        "Fish Meals",
+        "Meat Meals",
+        "Salads",
+        "Vegetarian Meals"
+    ],
+    "Dinner": [
+        "Chicken Meals",
+        "Fish Meals",
+        "Meat Meals",
+        "Salads",
+        "Vegetarian Meals"
+    ],
+    "Snacks": [
+        "Side Salads",
+        "Drinks",
+        "Savory Snacks",
+        "Sweet Snacks"
+    ]
+}
+
 # ==========================================
-# 3. GOOGLE SHEETS DATA LOADER
+# 5. GOOGLE SHEETS DATA LOADER
 # ==========================================
 SHEET_ID = "1LQsOAfiVeFzsukc1FMfGtmJgx1IcOYxBbPy_PGuIXKw"
 
@@ -184,103 +213,22 @@ def load_sheet_by_gid(gid):
     except Exception:
         return pd.DataFrame()
 
-# Load from your exact sheet tabs
-recipes_summary_df = load_sheet_by_gid("0") # Items Menu tab
-recipe_details_df = load_sheet_by_gid("45255346") # Meal Plan tab
-ingredients_master_df = load_sheet_by_gid("1075366356") # Ingredients Master tab
+recipes_summary_df = load_sheet_by_gid("0")
+recipe_details_df = load_sheet_by_gid("45255346")
+ingredients_master_df = load_sheet_by_gid("1075366356")
 
-# Clean and filter to only show finished recipes
+# Filter out uncompleted / #N/A rows
 if not recipes_summary_df.empty and "Total Calories" in recipes_summary_df.columns:
-    # Drop rows where Total Calories or Menu Item is missing/#N/A
     recipes_clean_df = recipes_summary_df.dropna(subset=["Menu Item", "Total Calories"]).copy()
-    # Ensure numeric types
     for col in ["Total Calories", "Total Protein", "Total Carbs", "Total Fat"]:
         if col in recipes_clean_df.columns:
             recipes_clean_df[col] = pd.to_numeric(recipes_clean_df[col], errors="coerce")
-    # Keep only rows with valid numbers
     recipes_clean_df = recipes_clean_df.dropna(subset=["Total Calories"])
 else:
     recipes_clean_df = pd.DataFrame()
-    with tab_meals:
-        if recipes_clean_df.empty:
-            st.warning("No completed recipes found or sheet is still updating. Ensure columns have valid numbers!")
-        else:
-            recipes = recipes_clean_df.to_dict(orient="records")
-            cols = st.columns(4)
-
-            for idx, recipe in enumerate(recipes):
-                with cols[idx % 4]:
-                    name_en = str(recipe.get("Menu Item", f"Recipe #{idx+1}")).strip()
-                    name_ar = str(recipe.get("Menu Item Ar", "")).strip()
-                    category = str(recipe.get("Categories", "Meal")).strip()
-
-                    cals = float(recipe.get("Total Calories", 0))
-                    pro = float(recipe.get("Total Protein", 0))
-                    carb = float(recipe.get("Total Carbs", 0))
-                    fat = float(recipe.get("Total Fat", 0))
-
-                    st.markdown(f"""
-                    <div class="recipe-card">
-                        <div class="recipe-card-header">
-                            <div style="font-size:3rem;">🥗</div>
-                            <div class="badge-count">{category}</div>
-                        </div>
-                        <div class="recipe-card-body">
-                            <div style="font-weight:700; font-size:1rem; color:#0F172A; min-height:45px; line-height:1.2;">
-                                {name_en}<br><span style="font-size:0.85rem; color:#64748B; font-weight:500;">{name_ar}</span>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin: 8px 0;">
-                                <div>
-                                    <span style="font-size:0.75rem; color:#64748B; font-weight:700;">ENERGY</span>
-                                    <div style="font-weight:800; font-size:1.05rem; color:#0F172A;">🔥 {cals:.0f} kcal</div>
-                                </div>
-                            </div>
-                            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; margin-bottom:12px;">
-                                <div class="macro-pill macro-p">P {pro:.1f}g</div>
-                                <div class="macro-pill macro-c">C {carb:.1f}g</div>
-                                <div class="macro-pill macro-f">F {fat:.1f}g</div>
-                            </div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    c_action1, c_action2 = st.columns(2)
-                    with c_action1:
-                        if st.button("View Guide", key=f"guide_{idx}", use_container_width=True):
-                            st.session_state.user["selected_recipe"] = {
-                                "name": name_en,
-                                "name_ar": name_ar,
-                                "cals": cals,
-                                "pro": pro,
-                                "carb": carb,
-                                "fat": fat,
-                                "details": recipe
-                            }
-                            st.rerun()
-
-                    with c_action2:
-                        label_btn = "+ Eat Today" if "Today" in st.session_state.plan_mode else "+ Add to Week"
-                        if st.button(label_btn, key=f"eat_{idx}", use_container_width=True):
-                            st.session_state.user["consumed_calories"] += cals
-                            st.session_state.user["consumed_protein"] += pro
-                            st.session_state.user["consumed_carbs"] += carb
-                            st.session_state.user["consumed_fat"] += fat
-
-                            # Add to grocery list
-                            if name_en in st.session_state.grocery_list:
-                                st.session_state.grocery_list[name_en]["servings"] += 1
-                            else:
-                                st.session_state.grocery_list[name_en] = {
-                                    "servings": 1,
-                                    "cals": cals,
-                                    "pro": pro,
-                                    "carb": carb,
-                                    "fat": fat
-                                }
-                            st.rerun()
 
 # ==========================================
-# 5. HEADER BRANDING & LOGO
+# 6. BRAND HEADER & LOGO
 # ==========================================
 col_logo, col_title = st.columns([1, 6])
 with col_logo:
@@ -322,6 +270,10 @@ if st.session_state.page == 1:
             selected_gender = st.pills("Sex", options=gender_options, default=curr_g, label_visibility="collapsed")
             if selected_gender:
                 st.session_state.user["gender"] = selected_gender
+        elif hasattr(st, "segmented_control"):
+            selected_gender = st.segmented_control("Sex", options=gender_options, default=curr_g, label_visibility="collapsed")
+            if selected_gender:
+                st.session_state.user["gender"] = selected_gender
         else:
             st.session_state.user["gender"] = st.radio("Sex", gender_options, index=gender_options.index(curr_g), horizontal=True, label_visibility="collapsed")
 
@@ -347,6 +299,10 @@ if st.session_state.page == 1:
             selected_goal = st.pills("Goal", options=goal_options, default=curr_goal, label_visibility="collapsed")
             if selected_goal:
                 st.session_state.user["goal"] = selected_goal
+        elif hasattr(st, "segmented_control"):
+            selected_goal = st.segmented_control("Goal", options=goal_options, default=curr_goal, label_visibility="collapsed")
+            if selected_goal:
+                st.session_state.user["goal"] = selected_goal
         else:
             st.session_state.user["goal"] = st.radio("Goal", goal_options, index=goal_options.index(curr_goal), horizontal=True, label_visibility="collapsed")
 
@@ -357,6 +313,10 @@ if st.session_state.page == 1:
         curr_diet = st.session_state.user.get("diet_type", "Balanced")
         if hasattr(st, "pills"):
             selected_diet = st.pills("Diet", options=diet_options, default=curr_diet, label_visibility="collapsed")
+            if selected_diet:
+                st.session_state.user["diet_type"] = selected_diet
+        elif hasattr(st, "segmented_control"):
+            selected_diet = st.segmented_control("Diet", options=diet_options, default=curr_diet, label_visibility="collapsed")
             if selected_diet:
                 st.session_state.user["diet_type"] = selected_diet
         else:
@@ -410,7 +370,6 @@ elif st.session_state.page == 2:
         st.caption("Interactive macro analysis, recipe guides, and grocery planning")
     
     with nav2:
-        # Today vs Week Planning Toggle
         plan_selection = st.radio(
             "Planning Horizon",
             ["Today (1 Day)", "This Week (7 Days)"],
@@ -427,7 +386,6 @@ elif st.session_state.page == 2:
             st.session_state.page = 1
             st.rerun()
 
-    # Scale targets if "This Week" is chosen
     scale_factor = 7 if "Week" in st.session_state.plan_mode else 1
     target_cals = st.session_state.user["daily_calories"] * scale_factor
     target_pro = st.session_state.user["target_protein"] * scale_factor
@@ -444,7 +402,6 @@ elif st.session_state.page == 2:
     left_carb = max(0.0, target_carb - c_carb)
     left_fat = max(0.0, target_fat - c_fat)
 
-    # 4 Primary Depletion / Progress Metric Cards
     m1, m2, m3, m4 = st.columns(4)
     with m1:
         st.markdown(f"""
@@ -488,7 +445,6 @@ elif st.session_state.page == 2:
 
     st.markdown("<hr style='border:0; border-top:1px solid #E2E8F0; margin: 25px 0;'>", unsafe_allow_html=True)
 
-    # Main Tabs: Recipes, Grocery Shopping List, Margot AI Chef
     tab_meals, tab_grocery, tab_margot = st.tabs([
         "🍽️ Recipes & Meal Catalog", 
         "🛒 Grocery & Shopping List", 
@@ -496,84 +452,124 @@ elif st.session_state.page == 2:
     ])
 
     with tab_meals:
-        if recipes_summary_df.empty:
-            st.warning("Connecting to Google Sheets... Ensure your Google Sheet is shared with 'Anyone with the link can view'.")
+        if recipes_clean_df.empty:
+            st.warning("No completed recipes found or sheet is still updating. Ensure columns have valid numbers!")
         else:
-            recipes = recipes_summary_df.to_dict(orient="records")
-            cols = st.columns(4)
+            # 1. Main Meal Slot Selector Pills
+            st.markdown("#### Select Meal Slot")
+            meal_slot = st.pills(
+                "Meal Slot",
+                options=list(MEAL_STRUCTURE.keys()),
+                default="Breakfast",
+                label_visibility="collapsed"
+            ) or "Breakfast"
 
-            for idx, recipe in enumerate(recipes):
-                with cols[idx % 4]:
-                    # Extract clean values
-                    name = str(recipe.get("Recipe Name", recipe.get("name", recipe.get("Name", f"Recipe #{idx+1}")))).strip()
-                    
-                    # Search across columns with safe numeric conversion
-                    cals = extract_numeric(recipe.get("Calories", recipe.get("calories", recipe.get("Energy", 350))), default=350.0)
-                    pro = extract_numeric(recipe.get("Protein", recipe.get("protein", recipe.get("P", 25.0))), default=25.0)
-                    carb = extract_numeric(recipe.get("Carbs", recipe.get("carbs", recipe.get("C", 35.0))), default=35.0)
-                    fat = extract_numeric(recipe.get("Fat", recipe.get("fat", recipe.get("F", 12.0))), default=12.0)
-                    
-                    img_url = str(recipe.get("Image", recipe.get("image", recipe.get("Image URL", "")))).strip()
-                    item_count = int(extract_numeric(recipe.get("Items", recipe.get("items", 4)), default=4))
+            # 2. Subcategories under the selected meal slot
+            available_subcats = MEAL_STRUCTURE[meal_slot]
+            st.markdown(f"**Categories for {meal_slot}:**")
+            subcat_choice = st.pills(
+                "Subcategories",
+                options=["All"] + available_subcats,
+                default="All",
+                label_visibility="collapsed"
+            ) or "All"
 
-                    st.markdown(f"""
-                    <div class="recipe-card">
-                        <div class="recipe-card-header">
-                            {f'<img src="{img_url}">' if img_url.startswith('http') else '<div style="font-size:3.5rem; color:#CBD5E1;">🍽️</div>'}
-                            <div class="badge-count">🍽️ {item_count} items</div>
-                        </div>
-                        <div class="recipe-card-body">
-                            <div style="font-weight:700; font-size:1.05rem; color:#0F172A; min-height:48px; line-height:1.3;">{name}</div>
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin: 10px 0;">
-                                <div>
-                                    <span style="font-size:0.75rem; color:#64748B; font-weight:700;">ENERGY</span>
-                                    <div style="font-weight:800; font-size:1rem; color:#0F172A;">🔥 {int(cals)} kcal</div>
+            # 3. Filter DataFrame based on selection
+            if meal_slot == "Snacks" and (subcat_choice in ["All", "Side Salads"]):
+                target_categories = [c for c in available_subcats if c != "Side Salads"] + ["Salads"]
+            else:
+                target_categories = available_subcats
+
+            if subcat_choice == "All":
+                filtered_df = recipes_clean_df[recipes_clean_df["Categories"].isin(target_categories)].copy()
+            elif subcat_choice == "Side Salads":
+                filtered_df = recipes_clean_df[recipes_clean_df["Categories"] == "Salads"].copy()
+            else:
+                filtered_df = recipes_clean_df[recipes_clean_df["Categories"] == subcat_choice].copy()
+
+            if filtered_df.empty:
+                st.info(f"No completed recipes currently found for {subcat_choice} in {meal_slot}.")
+            else:
+                recipes = filtered_df.to_dict(orient="records")
+                cols = st.columns(4)
+
+                for idx, recipe in enumerate(recipes):
+                    with cols[idx % 4]:
+                        raw_cat = str(recipe.get("Categories", "")).strip()
+                        name_en = str(recipe.get("Menu Item", f"Recipe #{idx+1}")).strip()
+                        name_ar = str(recipe.get("Menu Item Ar", "")).strip()
+
+                        # Apply 50% half-portion rule if in Snacks slot and it's a Salad
+                        is_side_salad = (meal_slot == "Snacks" and (raw_cat == "Salads" or subcat_choice == "Side Salads"))
+                        portion_multiplier = 0.5 if is_side_salad else 1.0
+
+                        cals = float(recipe.get("Total Calories", 0)) * portion_multiplier
+                        pro = float(recipe.get("Total Protein", 0)) * portion_multiplier
+                        carb = float(recipe.get("Total Carbs", 0)) * portion_multiplier
+                        fat = float(recipe.get("Total Fat", 0)) * portion_multiplier
+
+                        display_badge = "Side Salad (½ Portion)" if is_side_salad else raw_cat
+
+                        st.markdown(f"""
+                        <div class="recipe-card">
+                            <div class="recipe-card-header">
+                                <div style="font-size:3rem;">🥗</div>
+                                <div class="badge-count">{display_badge}</div>
+                            </div>
+                            <div class="recipe-card-body">
+                                <div style="font-weight:700; font-size:1rem; color:#0F172A; min-height:45px; line-height:1.2;">
+                                    {name_en}<br><span style="font-size:0.85rem; color:#64748B; font-weight:500;">{name_ar}</span>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin: 8px 0;">
+                                    <div>
+                                        <span style="font-size:0.75rem; color:#64748B; font-weight:700;">ENERGY</span>
+                                        <div style="font-weight:800; font-size:1.05rem; color:#0F172A;">🔥 {cals:.0f} kcal</div>
+                                    </div>
+                                </div>
+                                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; margin-bottom:12px;">
+                                    <div class="macro-pill macro-p">P {pro:.1f}g</div>
+                                    <div class="macro-pill macro-c">C {carb:.1f}g</div>
+                                    <div class="macro-pill macro-f">F {fat:.1f}g</div>
                                 </div>
                             </div>
-                            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; margin-bottom:12px;">
-                                <div class="macro-pill macro-p">P {pro:.1f}g</div>
-                                <div class="macro-pill macro-c">C {carb:.1f}g</div>
-                                <div class="macro-pill macro-f">F {fat:.1f}g</div>
-                            </div>
                         </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        """, unsafe_allow_html=True)
 
-                    c_action1, c_action2 = st.columns(2)
-                    with c_action1:
-                        if st.button("View Guide", key=f"guide_{idx}", use_container_width=True):
-                            st.session_state.user["selected_recipe"] = {
-                                "name": name,
-                                "cals": cals,
-                                "pro": pro,
-                                "carb": carb,
-                                "fat": fat,
-                                "details": recipe
-                            }
-                            st.rerun()
-
-                    with c_action2:
-                        label_add = "+ Eat Today" if "Today" in st.session_state.plan_mode else "+ Add to Week"
-                        if st.button(label_add, key=f"eat_{idx}", use_container_width=True):
-                            st.session_state.user["consumed_calories"] += cals
-                            st.session_state.user["consumed_protein"] += pro
-                            st.session_state.user["consumed_carbs"] += carb
-                            st.session_state.user["consumed_fat"] += fat
-
-                            # Add to consolidated grocery list
-                            if name in st.session_state.grocery_list:
-                                st.session_state.grocery_list[name]["servings"] += 1
-                            else:
-                                st.session_state.grocery_list[name] = {
-                                    "servings": 1,
+                        c_action1, c_action2 = st.columns(2)
+                        with c_action1:
+                            if st.button("View Guide", key=f"guide_{meal_slot}_{idx}", use_container_width=True):
+                                st.session_state.user["selected_recipe"] = {
+                                    "name": f"{name_en} (Side Salad ½)" if is_side_salad else name_en,
+                                    "name_ar": name_ar,
                                     "cals": cals,
                                     "pro": pro,
                                     "carb": carb,
-                                    "fat": fat
+                                    "fat": fat,
+                                    "details": recipe
                                 }
-                            st.rerun()
+                                st.rerun()
 
-        # Modal Recipe Details
+                        with c_action2:
+                            label_btn = "+ Eat Today" if "Today" in st.session_state.plan_mode else "+ Add to Week"
+                            if st.button(label_btn, key=f"eat_{meal_slot}_{idx}", use_container_width=True):
+                                st.session_state.user["consumed_calories"] += cals
+                                st.session_state.user["consumed_protein"] += pro
+                                st.session_state.user["consumed_carbs"] += carb
+                                st.session_state.user["consumed_fat"] += fat
+
+                                item_label = f"{name_en} (½ Side Salad)" if is_side_salad else name_en
+                                if item_label in st.session_state.grocery_list:
+                                    st.session_state.grocery_list[item_label]["servings"] += 1
+                                else:
+                                    st.session_state.grocery_list[item_label] = {
+                                        "servings": 1,
+                                        "cals": cals,
+                                        "pro": pro,
+                                        "carb": carb,
+                                        "fat": fat
+                                    }
+                                st.rerun()
+
         if st.session_state.user["selected_recipe"] is not None:
             rec = st.session_state.user["selected_recipe"]
             st.markdown("<hr style='border:0; border-top:2px solid #10B981; margin: 30px 0;'>", unsafe_allow_html=True)
@@ -590,8 +586,9 @@ elif st.session_state.page == 2:
             with guide_tab1:
                 st.markdown("#### Ingredients Baseline & Method")
                 if not recipe_details_df.empty:
+                    clean_match_name = rec['name'].replace(" (Side Salad ½)", "")
                     matched_items = recipe_details_df[
-                        recipe_details_df.astype(str).apply(lambda row: rec['name'].lower() in row.to_string().lower(), axis=1)
+                        recipe_details_df.astype(str).apply(lambda row: clean_match_name.lower() in row.to_string().lower(), axis=1)
                     ]
                     if not matched_items.empty:
                         st.dataframe(matched_items, use_container_width=True)
@@ -616,13 +613,12 @@ elif st.session_state.page == 2:
                 st.session_state.user["selected_recipe"] = None
                 st.rerun()
 
-    # Grocery Shopping List Tab
     with tab_grocery:
         st.markdown(f"### Consolidated Grocery List ({st.session_state.plan_mode})")
         st.caption("Aggregated from the meals you have scheduled or logged.")
 
         if not st.session_state.grocery_list:
-            st.info("No meals added yet! Click '+ Eat' or '+ Add to Week' on any recipe card to build your shopping list.")
+            st.info("No meals added yet! Click '+ Eat Today' or '+ Add to Week' on any recipe card to build your shopping list.")
         else:
             grocery_data = []
             for recipe_name, item_info in st.session_state.grocery_list.items():
@@ -645,7 +641,6 @@ elif st.session_state.page == 2:
                 st.session_state.user["consumed_fat"] = 0.0
                 st.rerun()
 
-    # Margot AI Chef Assistant Tab
     with tab_margot:
         st.markdown("### 👩‍🍳 Margot | Culinary Nutritionist & AI Chef")
         st.caption("Ask Margot about ingredient swaps, culinary techniques, prep steps, or diet tailoring.")
@@ -662,7 +657,6 @@ elif st.session_state.page == 2:
         if user_input:
             st.session_state.margot_history.append({"role": "user", "content": user_input})
 
-            # Check for API key in Secrets or Environment
             api_key = None
             if "GEMINI_API_KEY" in st.secrets:
                 api_key = st.secrets["GEMINI_API_KEY"]
