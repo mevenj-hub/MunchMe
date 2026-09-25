@@ -209,27 +209,6 @@ def translate_unit(unit):
     return UNITS_TRANSLATION_MAP.get(str(unit).strip().lower(), str(unit).strip())
 
 # ==========================================
-# 3. LOCAL IMAGE RESOLVER (RECURSIVE SEARCH)
-# ==========================================
-@st.cache_data
-def build_local_image_index():
-    index = {}
-    base_dirs = ["images", "."]
-    for bdir in base_dirs:
-        if os.path.exists(bdir):
-            for root, _, files in os.walk(bdir):
-                for f in files:
-                    if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
-                        full_p = os.path.join(root, f)
-                        # clean name without extension
-                        clean_n = os.path.splitext(f)[0].strip().lower()
-                        index[clean_n] = full_p
-                        index[f.strip().lower()] = full_p
-    return index
-
-LOCAL_IMAGES = build_local_image_index()
-
-# ==========================================
 # 3. UNIVERSAL IMAGE MATCHER
 # ==========================================
 def normalize_name(s):
@@ -272,10 +251,9 @@ def find_recipe_image(name_en, category=""):
 
     # 3. Direct GitHub Raw Fallback (Loads from GitHub CDN if local scan missed it)
     clean_encoded = urllib.parse.quote(str(name_en).strip())
-    cat_encoded = urllib.parse.quote(str(category).strip())
     
-    # Try category path on GitHub
     if category:
+        cat_encoded = urllib.parse.quote(str(category).strip())
         return f"https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/images/{cat_encoded}/{clean_encoded}.png"
     
     return f"https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/images/{clean_encoded}.png"
@@ -455,8 +433,11 @@ if hasattr(st, "dialog"):
         st.markdown(f"### {title_view}")
 
         modal_img = rec.get("resolved_image", None)
-        if modal_img and os.path.exists(modal_img):
-            st.image(modal_img, use_container_width=True)
+        if modal_img:
+            try:
+                st.image(modal_img, use_container_width=True)
+            except Exception:
+                pass
 
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
         m_col1.metric("السعرات" if is_ar else "Calories", f"{int(rec['cals'])} kcal")
@@ -609,7 +590,6 @@ with h_col3:
 
 st.markdown("<hr style='border:0; border-top:1px solid #E2E8F0; margin: 10px 0 25px 0;'>", unsafe_allow_html=True)
 
-
 # ==============================================================================
 # PAGE 1: USER ONBOARDING
 # ==============================================================================
@@ -734,7 +714,6 @@ if st.session_state.page == 1:
             st.session_state.page = 2
             st.rerun()
 
-
 # ==============================================================================
 # PAGE 2: MEAL DASHBOARD, NOTE-STYLE GROCERY & MARGOT
 # ==============================================================================
@@ -828,7 +807,7 @@ elif st.session_state.page == 2:
     tab_meals, tab_grocery, tab_summary, tab_margot = st.tabs(tab_titles)
 
     # ==========================================
-    # TAB 1: MEAL CATALOG, SEARCH & FAVORITES
+    # TAB 1: MEAL CATALOG & FAVORITES
     # ==========================================
     with tab_meals:
         if recipes_clean_df.empty:
@@ -894,7 +873,7 @@ elif st.session_state.page == 2:
                         name_en = str(recipe.get("Menu Item", f"Recipe #{idx+1}")).strip()
                         name_ar = str(recipe.get("Menu Item Ar", "")).strip()
 
-                        # Check local images
+                        # Universal Local & Remote Image Locator
                         local_img_path = find_recipe_image(name_en, raw_cat)
 
                         is_side_salad = (meal_slot == "Snacks" and (raw_cat == "Salads" or subcat_choice == "Side Salads"))
@@ -911,49 +890,27 @@ elif st.session_state.page == 2:
                         is_fav = name_en in st.session_state.favorite_recipes
                         fav_icon = "❤️" if is_fav else "🤍"
 
-                        # Render Card Header
-                        if local_img_path and os.path.exists(local_img_path):
-                            header_media = f'<img src="data:image/jpeg;base64,{open(local_img_path, "rb").read().hex()}" style="width:100%; height:100%; object-fit:cover;">'
-                        else:
-                            header_media = '<div style="display:flex; width:100%; height:100%; align-items:center; justify-content:center; font-size:3.5rem; background:#F8FAFC;">🥗</div>'
-
-                        # Render Recipe Card Image
+                        # Single Unified Container Card Block
                         with st.container():
-                            st.markdown(f"""
-                            <div class="recipe-card">
-                                <div class="recipe-card-header">
-                                    <div class="badge-count">{display_badge}</div>
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            # Streamlit native image loader
-                            img_shown = False
+                            # Header & Optional Fallback
+                            img_rendered = False
                             if local_img_path:
                                 try:
                                     st.image(local_img_path, use_container_width=True)
-                                    img_shown = True
+                                    img_rendered = True
                                 except Exception:
-                                    img_shown = False
+                                    img_rendered = False
                             
-                            if not img_shown:
-                                st.markdown('<div style="height:120px; display:flex; align-items:center; justify-content:center; font-size:3.5rem; background:#F8FAFC; border-radius:12px; margin-bottom:8px;">🥗</div>', unsafe_allow_html=True)
-                        # Render Recipe Card
-                        with st.container():
-                            st.markdown(f"""
-                            <div class="recipe-card">
+                            if not img_rendered:
+                                st.markdown(f"""
                                 <div class="recipe-card-header">
-                                    <div class="badge-count">{display_badge}</div>
+                                    <div style="font-size:3.5rem;">🥗</div>
                                 </div>
-                            </div>
-                            """, unsafe_allow_html=True)
+                                """, unsafe_allow_html=True)
                             
-                            # Streamlit native image preview (clean & 100% reliable)
-                            if local_img_path and os.path.exists(local_img_path):
-                                st.image(local_img_path, use_container_width=True)
-                            else:
-                                st.markdown('<div style="height:120px; display:flex; align-items:center; justify-content:center; font-size:3.5rem; background:#F8FAFC; border-radius:12px; margin-bottom:8px;">🥗</div>', unsafe_allow_html=True)
+                            st.markdown(f"<div style='margin-top:-32px; margin-bottom:12px;'><span class='badge-count' style='position:relative; top:0; right:0;'>{display_badge}</span></div>", unsafe_allow_html=True)
 
+                            # Text and Macros
                             st.markdown(f"<div style='font-weight:700; font-size:1rem; color:#0F172A; min-height:48px; line-height:1.2; margin-top:4px;'>{display_title}</div>", unsafe_allow_html=True)
                             st.markdown(f"<div style='font-weight:800; font-size:1.05rem; color:#0F172A; margin: 6px 0;'>🔥 {cals:.0f} kcal</div>", unsafe_allow_html=True)
 
@@ -965,6 +922,7 @@ elif st.session_state.page == 2:
                             </div>
                             """, unsafe_allow_html=True)
 
+                            # Action Buttons
                             c_action1, c_action2, c_fav = st.columns([1.6, 1.6, 0.8])
                             with c_action1:
                                 guide_btn_label = "الوصفة" if is_ar else "Guide"
@@ -1035,6 +993,7 @@ elif st.session_state.page == 2:
                                     else:
                                         st.session_state.favorite_recipes.add(name_en)
                                     st.rerun()
+                            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
     # ==========================================
     # TAB 2: NOTE-STYLE GROCERY LIST & EXPORTERS
