@@ -128,22 +128,13 @@ st.markdown(f"""
         font-size: 0.85rem;
     }}
 
-    /* Step Card */
-    .step-card {{
-        background: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        padding: 12px 14px;
-        margin-bottom: 10px;
-    }}
-
     /* Note-Style Grocery List Card */
     .note-card {{
         background: #FFFDF9;
         border: 1.5px solid #FDE68A;
-        border-left: 6px solid #F59E0B;
+        {'border-right: 6px solid #F59E0B;' if is_ar else 'border-left: 6px solid #F59E0B;'}
         border-radius: 14px;
-        padding: 1rem 1.25rem;
+        padding: 0.75rem 1.25rem;
         margin-bottom: 12px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.03);
     }}
@@ -151,10 +142,9 @@ st.markdown(f"""
         font-weight: 800;
         font-size: 1.05rem;
         color: #92400E;
-        margin-bottom: 8px;
         display: flex;
         align-items: center;
-        gap: 8px;
+        justify-content: space-between;
     }}
 
     .chat-bubble {{
@@ -177,7 +167,109 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. NUMERIC & DATA CLEANING HELPERS
+# 2. BILINGUAL INGREDIENTS & UNIT TRANSLATOR
+# ==========================================
+INGREDIENTS_TRANSLATION_MAP = {
+    "egg": "بيض",
+    "eggs": "بيض",
+    "olive oil": "زيت زيتون",
+    "sourdough": "خبز الساوردو",
+    "pita bread (small)": "خبز بيتا صغير",
+    "pita bread": "خبز بيتا",
+    "toast": "توست أسمر / أبيض",
+    "black olives": "زيتون أسود",
+    "olives": "زيتون",
+    "makdoos": "مكدوس",
+    "labneh": "لبنة",
+    "cucumber": "خيار",
+    "cherry tomatoes": "طماطم كرزية",
+    "tomato": "طماطم",
+    "tomatoes": "طماطم",
+    "chilli flakes": "رقائق الفلفل الحار",
+    "chili flakes": "رقائق الفلفل الحار",
+    "salt": "ملح طعام",
+    "black pepper": "فلفل أسود",
+    "avocado": "أفوكادو",
+    "lettuce": "خس طازج",
+    "rocca": "جرجير",
+    "parsley": "بقدونس",
+    "mint": "نعناع",
+    "cilantro": "كزبرة خضراء",
+    "spinach": "سبانخ",
+    "chicken breast": "صدر دجاج",
+    "chicken": "دجاج",
+    "chicken broth": "مرق دجاج",
+    "quinoa": "كينوا",
+    "mix beans": "فاصولياء مشكلة",
+    "corn": "ذرة صفراء",
+    "bell pepper": "فلفل رومي حلو",
+    "feta cheese": "جبنة فيتا",
+    "halloumi": "جبنة حلوم",
+    "parmesan": "جبن بارميزان",
+    "cheddar": "جبن شيدر",
+    "greek yogurt": "زبادي يوناني",
+    "yogurt": "زبادي",
+    "milk": "حليب",
+    "almond milk": "حليب لوز",
+    "skim milk": "حليب خالي الدسم",
+    "oats": "شوفان",
+    "rolled oats": "شوفان حبة كاملة",
+    "chia seeds": "بذور الشيا",
+    "flax seeds": "بذور الكتان",
+    "peanut butter": "زبدة الفول السوداني",
+    "almond": "لوز",
+    "almonds": "لوز",
+    "walnut": "جوز (عين جمل)",
+    "walnuts": "جوز",
+    "cashew": "كاجو",
+    "dates": "تمر",
+    "date": "تمر",
+    "banana": "موز",
+    "green apple": "تفاح أخضر",
+    "apple": "تفاح",
+    "blueberry": "توت أزرق",
+    "blueberries": "توت أزرق",
+    "lemon juice": "عصير ليمون",
+    "lime juice": "عصير ليمون حامض",
+    "garlic": "ثوم",
+    "garlic powder": "بودرة ثوم",
+    "onion": "بصل",
+    "cumin": "كمون",
+    "paprika": "بابريكا",
+    "smoked paprika": "بابريكا مدخنة",
+    "mustard": "خردل",
+    "mayonnaise": "مايونيز لايت",
+    "honey": "عسل طبيعي"
+}
+
+UNITS_TRANSLATION_MAP = {
+    "g": "غ",
+    "gram": "غ",
+    "grams": "غ",
+    "ml": "مل",
+    "pcs": "حبة",
+    "pc": "حبة",
+    "slice": "شريحة",
+    "slices": "شرائح",
+    "tbsp": "ملعقة كبيرة",
+    "tsp": "ملعقة صغيرة",
+    "cup": "كوب"
+}
+
+def translate_ingredient(name):
+    if not is_ar:
+        return str(name).strip()
+    clean_key = str(name).strip().lower()
+    return INGREDIENTS_TRANSLATION_MAP.get(clean_key, str(name).strip())
+
+def translate_unit(unit):
+    if not is_ar:
+        return str(unit).strip()
+    clean_u = str(unit).strip().lower()
+    return UNITS_TRANSLATION_MAP.get(clean_u, str(unit).strip())
+
+# ==========================================
+# 3. NUMERIC & DATA CLEANING HELPERS
 # ==========================================
 def extract_numeric(val, default=0.0):
     if pd.isna(val):
@@ -193,20 +285,21 @@ def extract_numeric(val, default=0.0):
 
 def categorize_ingredient(name):
     n = str(name).lower()
-    if any(k in n for k in ["lettuce", "rocca", "cucumber", "tomato", "onion", "garlic", "spinach", "cabbage", "pepper", "broccoli", "carrot", "herb", "parsley", "mint", "cilantro", "zucchini", "mushroom", "potato", "corn"]):
-        return ("خضار وأعشاب طازجة", "🥬 Vegetables & Greens") if is_ar else ("🥬 Vegetables & Greens", "خضار وأعشاب طازجة")
+    # Categorization based on common culinary classifications
+    if any(k in n for k in ["sourdough", "bread", "toast", "pita", "rice", "oat", "quinoa", "freekeh", "pasta", "fettuccine", "flour", "tortilla"]):
+        return "حبوب ونشويات ومخبوزات" if is_ar else "🌾 Grains, Pasta & Bakery"
+    elif any(k in n for k in ["lettuce", "rocca", "cucumber", "tomato", "onion", "garlic", "spinach", "cabbage", "pepper", "broccoli", "carrot", "herb", "parsley", "mint", "cilantro", "zucchini", "mushroom", "potato", "corn"]):
+        return "خضار وأعشاب طازجة" if is_ar else "🥬 Vegetables & Greens"
     elif any(k in n for k in ["apple", "banana", "berry", "berries", "strawberry", "lemon", "lime", "date", "orange", "avocado", "mango", "pomegranate"]):
-        return ("فواكه طازجة", "🍎 Fresh Fruits") if is_ar else ("🍎 Fresh Fruits", "فواكه طازجة")
+        return "فواكه طازجة" if is_ar else "🍎 Fresh Fruits"
     elif any(k in n for k in ["chicken", "beef", "meat", "turkey", "fish", "salmon", "tuna", "shrimp"]):
-        return ("لحوم ودواجن وأسماك", "🥩 Meat, Poultry & Seafood") if is_ar else ("🥩 Meat, Poultry & Seafood", "لحوم ودواجن وأسماك")
+        return "لحوم ودواجن وأسماك" if is_ar else "🥩 Meat, Poultry & Seafood"
     elif any(k in n for k in ["milk", "yogurt", "cheese", "halloumi", "labneh", "butter", "egg", "cream"]):
-        return ("ألبان وأجبان وبيض", "🥛 Dairy, Milk & Eggs") if is_ar else ("🥛 Dairy, Milk & Eggs", "ألبان وأجبان وبيض")
-    elif any(k in n for k in ["rice", "bread", "toast", "oat", "quinoa", "freekeh", "pasta", "fettuccine", "flour", "tortilla"]):
-        return ("حبوب ونشويات ومخبوزات", "🌾 Grains, Pasta & Bakery") if is_ar else ("🌾 Grains, Pasta & Bakery", "حبوب ونشويات ومخبوزات")
+        return "ألبان وأجبان وبيض" if is_ar else "🥛 Dairy, Milk & Eggs"
     elif any(k in n for k in ["almond", "walnut", "cashew", "peanut", "seed", "chia"]):
-        return ("مكسرات وبذور", "🥜 Nuts & Seeds") if is_ar else ("🥜 Nuts & Seeds", "مكسرات وبذور")
+        return "مكسرات وبذور" if is_ar else "🥜 Nuts & Seeds"
     else:
-        return ("بهارات وزيوت ومستلزمات", "🧂 Pantry, Oils, Spices & Dressings") if is_ar else ("🧂 Pantry, Oils, Spices & Dressings", "بهارات وزيوت ومستلزمات")
+        return "بهارات وزيوت ومستلزمات" if is_ar else "🧂 Pantry, Oils, Spices & Dressings"
 
 def generate_donut_chart_svg(pro_kcal, carb_kcal, fat_kcal, total_cals):
     total = max(1.0, pro_kcal + carb_kcal + fat_kcal)
@@ -215,7 +308,6 @@ def generate_donut_chart_svg(pro_kcal, carb_kcal, fat_kcal, total_cals):
     p_end = p_pct
     c_end = round(p_pct + c_pct, 1)
 
-    # Pure CSS conic-gradient donut chart (no SVG indentation bugs)
     return (
         f'<div style="display:flex; justify-content:center; align-items:center; padding: 15px 0;">'
         f'<div style="width: 175px; height: 175px; border-radius: 50%; '
@@ -229,7 +321,7 @@ def generate_donut_chart_svg(pro_kcal, carb_kcal, fat_kcal, total_cals):
     )
 
 # ==========================================
-# 3. SESSION STATE MANAGEMENT
+# 4. SESSION STATE MANAGEMENT
 # ==========================================
 if "page" not in st.session_state:
     st.session_state.page = 1
@@ -276,7 +368,7 @@ if "user" not in st.session_state:
     }
 
 # ==========================================
-# 4. MEAL SLOTS & CATEGORIES HIERARCHY
+# 5. MEAL SLOTS & CATEGORIES HIERARCHY
 # ==========================================
 MEAL_STRUCTURE = {
     "Breakfast": ["Egg Breakfast", "Breakfast Smoothies", "Savory Breakfast", "Sweet Breakfast"],
@@ -293,7 +385,7 @@ MEAL_SLOTS_AR = {
 }
 
 # ==========================================
-# 5. GOOGLE SHEETS DATA LOADER
+# 6. GOOGLE SHEETS DATA LOADER
 # ==========================================
 SHEET_ID = "1LQsOAfiVeFzsukc1FMfGtmJgx1IcOYxBbPy_PGuIXKw"
 
@@ -338,7 +430,7 @@ else:
     recipes_clean_df = pd.DataFrame()
 
 # ==========================================
-# 6. ENHANCED RECIPE MODAL (DONUT & STEPS)
+# 7. ENHANCED RECIPE MODAL
 # ==========================================
 if hasattr(st, "dialog"):
     @st.dialog("Recipe Guide / دليل الوصفة", width="large")
@@ -346,7 +438,6 @@ if hasattr(st, "dialog"):
         title_view = f"📖 {rec['name_ar']} ({rec['name']})" if is_ar else f"📖 {rec['name']} ({rec['name_ar']})"
         st.markdown(f"### {title_view}")
 
-        # Top Metric Cards
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
         m_col1.metric("السعرات" if is_ar else "Calories", f"{int(rec['cals'])} kcal")
         m_col2.metric("بروتين" if is_ar else "Protein", f"{rec['pro']:.1f} g")
@@ -368,28 +459,30 @@ if hasattr(st, "dialog"):
 
             col_ing, col_steps = st.columns([1, 1.2], gap="medium")
 
-            # Left Column: Ingredients as a clean List
             with col_ing:
                 st.markdown(f"**{'🥗 قائمة المقادير:' if is_ar else '🥗 Ingredients:'}**")
                 if not matched_items.empty and "Ingredients" in matched_items.columns:
                     for _, irow in matched_items.iterrows():
-                        ing_n = str(irow.get("Ingredients", "")).strip()
-                        if ing_n and ing_n.lower() != "nan" and ing_n.lower() != "ingredients":
+                        raw_ing_n = str(irow.get("Ingredients", "")).strip()
+                        if raw_ing_n and raw_ing_n.lower() != "nan" and raw_ing_n.lower() != "ingredients":
                             q_val = extract_numeric(irow.get("Qtty.", 1))
-                            u_val = str(irow.get("Unit", "g")).strip()
-                            if not u_val or u_val.lower() == "nan":
-                                u_val = "g"
+                            raw_u = str(irow.get("Unit", "g")).strip()
+                            if not raw_u or raw_u.lower() == "nan":
+                                raw_u = "g"
                             
-                            st.markdown(f"""
-                            <div class="ing-card">
-                                <span class="ing-title">{ing_n}</span>
-                                <span class="ing-amount">{q_val:g} {u_val}</span>
-                            </div>
-                            """, unsafe_allow_html=True)
+                            display_ing = translate_ingredient(raw_ing_n)
+                            display_u = translate_unit(raw_u)
+
+                            st.markdown(
+                                f'<div class="ing-card">'
+                                f'<span class="ing-title">{display_ing}</span>'
+                                f'<span class="ing-amount">{q_val:g} {display_u}</span>'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
                 else:
                     st.info("تم تحميل المكونات الأساسية." if is_ar else "Ingredients loaded from master sheet.")
 
-            # Right Column: Method Steps with Checkboxes
             with col_steps:
                 st.markdown(f"**{'👨‍🍳 خطوات التحضير:' if is_ar else '👨‍🍳 Preparation Steps:'}**")
                 raw_method = ""
@@ -399,7 +492,6 @@ if hasattr(st, "dialog"):
                         raw_method = str(method_vals[0]).strip()
 
                 if raw_method and raw_method.lower() != "none" and raw_method.lower() != "nan":
-                    # Parse steps by numbers (1. , 2. ) or line breaks
                     steps = [s.strip() for s in re.split(r'\n+|\d+\.\s*', raw_method) if len(s.strip()) > 3]
                     if not steps:
                         steps = [raw_method]
@@ -418,7 +510,6 @@ if hasattr(st, "dialog"):
                 else:
                     st.info("لا توجد تعليمات تحضير مفصلة لهذه الوصفة." if is_ar else "No step-by-step instructions recorded for this meal.")
 
-        # Tab 2: Donut Chart & Detailed Caloric Equivalence
         with guide_tab2:
             st.markdown(f"#### {'توزيع السعرات الحرارية حسب الماكروز' if is_ar else 'Caloric Contribution by Macro'}")
             
@@ -435,7 +526,6 @@ if hasattr(st, "dialog"):
                 chart_col, legend_col = st.columns([1, 1.2], gap="large")
 
                 with chart_col:
-                    # Render Donut SVG
                     donut_html = generate_donut_chart_svg(pro_kcal, carb_kcal, fat_kcal, rec['cals'])
                     st.markdown(donut_html, unsafe_allow_html=True)
 
@@ -460,7 +550,7 @@ else:
         st.session_state.active_modal_recipe = rec
 
 # ==========================================
-# 7. HEADER, LOGO & LANGUAGE SWITCHER
+# 8. HEADER, LOGO & LANGUAGE SWITCHER
 # ==========================================
 h_col1, h_col2, h_col3 = st.columns([1.5, 6, 2.5])
 
@@ -843,19 +933,19 @@ elif st.session_state.page == 2:
                                         ]
 
                                     for _, ing_row in matched_rows.iterrows():
-                                        ing_name = str(ing_row.get("Ingredients", "")).strip()
-                                        if ing_name and ing_name.lower() != "nan" and ing_name.lower() != "ingredients":
+                                        raw_ing_n = str(ing_row.get("Ingredients", "")).strip()
+                                        if raw_ing_n and raw_ing_n.lower() != "nan" and raw_ing_n.lower() != "ingredients":
                                             raw_q = extract_numeric(ing_row.get("Qtty.", 100)) * portion_multiplier
                                             raw_u = str(ing_row.get("Unit", "g")).strip()
                                             if not raw_u or raw_u.lower() == "nan":
                                                 raw_u = "g"
                                             
-                                            ing_cat, _ = categorize_ingredient(ing_name)
+                                            ing_cat = categorize_ingredient(raw_ing_n)
 
-                                            if ing_name in st.session_state.raw_grocery_items:
-                                                st.session_state.raw_grocery_items[ing_name]["quantity"] += raw_q
+                                            if raw_ing_n in st.session_state.raw_grocery_items:
+                                                st.session_state.raw_grocery_items[raw_ing_n]["quantity"] += raw_q
                                             else:
-                                                st.session_state.raw_grocery_items[ing_name] = {
+                                                st.session_state.raw_grocery_items[raw_ing_n] = {
                                                     "quantity": raw_q,
                                                     "unit": raw_u,
                                                     "category": ing_cat
@@ -873,18 +963,22 @@ elif st.session_state.page == 2:
             st.info("مفكرة التسوق فارغة! اضغط على '+ تناول اليوم' أو '+ أضف للأسبوع' في أي وصفة لإضافة مقاديرها تلقائياً." if is_ar else "Your notepad is empty! Click '+ Eat Today' or '+ Add to Week' on any recipe card to build your ingredient list.")
         else:
             items_by_cat = {}
-            for ing_name, data in st.session_state.raw_grocery_items.items():
-                cat = data.get("category", "🧂 Pantry, Oils, Spices & Dressings")
+            for raw_ing_name, data in st.session_state.raw_grocery_items.items():
+                cat = data.get("category", "بهارات وزيوت ومستلزمات" if is_ar else "🧂 Pantry, Oils, Spices & Dressings")
                 if cat not in items_by_cat:
                     items_by_cat[cat] = []
                 
                 q_val = round(data["quantity"], 1)
                 if q_val.is_integer():
                     q_val = int(q_val)
+                
+                display_name = translate_ingredient(raw_ing_name)
+                display_unit = translate_unit(data["unit"])
                     
                 items_by_cat[cat].append({
-                    "name": ing_name,
-                    "amount": f"{q_val} {data['unit']}"
+                    "raw_key": raw_ing_name,
+                    "name": display_name,
+                    "amount": f"{q_val} {display_unit}"
                 })
 
             for section, items in sorted(items_by_cat.items()):
@@ -892,18 +986,18 @@ elif st.session_state.page == 2:
                 <div class="note-card">
                     <div class="note-header">
                         <span>{section}</span>
-                        <span style="font-size:0.85rem; font-weight:600; color:#B45309;">({len(items)} {'أصناف' if is_ar else 'items'})</span>
+                        <span style="font-size:0.85rem; font-weight:700; color:#B45309;">({len(items)} {'أصناف' if is_ar else 'items'})</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
                 for item in items:
                     c_chk, c_txt = st.columns([1, 11])
-                    chk_key = f"chk_{item['name']}"
+                    chk_key = f"chk_{item['raw_key']}"
                     
                     with c_chk:
-                        is_checked = st.checkbox("", key=chk_key, value=st.session_state.grocery_checked.get(item['name'], False), label_visibility="collapsed")
-                        st.session_state.grocery_checked[item['name']] = is_checked
+                        is_checked = st.checkbox("", key=chk_key, value=st.session_state.grocery_checked.get(item['raw_key'], False), label_visibility="collapsed")
+                        st.session_state.grocery_checked[item['raw_key']] = is_checked
                     
                     with c_txt:
                         if is_checked:
