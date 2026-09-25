@@ -64,11 +64,12 @@ st.markdown(f"""
     }}
     .recipe-card-header {{
         position: relative;
-        height: 150px;
+        height: 165px;
         background-color: #F1F5F9;
         display: flex;
         align-items: center;
         justify-content: center;
+        overflow: hidden;
     }}
     .recipe-card-header img {{
         width: 100%;
@@ -85,6 +86,7 @@ st.markdown(f"""
         border-radius: 20px;
         font-size: 0.75rem;
         font-weight: 700;
+        z-index: 2;
     }}
     .recipe-card-body {{
         padding: 1.25rem;
@@ -103,7 +105,6 @@ st.markdown(f"""
     .macro-c {{ background-color: #FEF9C3; color: #CA8A04; }}
     .macro-f {{ background-color: #FFE4E6; color: #E11D48; }}
 
-    /* Ingredient Item Card */
     .ing-card {{
         background: #FFFFFF;
         border: 1px solid #E2E8F0;
@@ -128,7 +129,6 @@ st.markdown(f"""
         font-size: 0.85rem;
     }}
 
-    /* Note-Style Grocery List Card */
     .note-card {{
         background: #FFFDF9;
         border: 1.5px solid #FDE68A;
@@ -269,7 +269,7 @@ def translate_unit(unit):
     return UNITS_TRANSLATION_MAP.get(clean_u, str(unit).strip())
 
 # ==========================================
-# 3. NUMERIC & DATA CLEANING HELPERS
+# 3. NUMERIC & IMAGE HELPERS
 # ==========================================
 def extract_numeric(val, default=0.0):
     if pd.isna(val):
@@ -283,9 +283,34 @@ def extract_numeric(val, default=0.0):
             return default
     return default
 
+def resolve_image_url(img_val):
+    if not img_val or pd.isna(img_val):
+        return ""
+    val = str(img_val).strip()
+    if not val or val.lower() in ["none", "nan", "#n/a"]:
+        return ""
+
+    # Convert Google Drive links
+    if "drive.google.com" in val:
+        file_id_match = re.search(r"/(?:d|folders|file/d)/([a-zA-Z0-9_-]+)", val) or re.search(r"id=([a-zA-Z0-9_-]+)", val)
+        if file_id_match:
+            return f"https://drive.google.com/thumbnail?id={file_id_match.group(1)}&sz=w1000"
+
+    # Local file exists
+    if os.path.exists(val):
+        return val
+    if os.path.exists(os.path.join("images", val)):
+        return os.path.join("images", val)
+
+    # Raw filename in GitHub repository
+    if not val.startswith("http"):
+        clean_file = val.replace(" ", "%20")
+        return f"https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/{clean_file}"
+
+    return val
+
 def categorize_ingredient(name):
     n = str(name).lower()
-    # Categorization based on common culinary classifications
     if any(k in n for k in ["sourdough", "bread", "toast", "pita", "rice", "oat", "quinoa", "freekeh", "pasta", "fettuccine", "flour", "tortilla"]):
         return "حبوب ونشويات ومخبوزات" if is_ar else "🌾 Grains, Pasta & Bakery"
     elif any(k in n for k in ["lettuce", "rocca", "cucumber", "tomato", "onion", "garlic", "spinach", "cabbage", "pepper", "broccoli", "carrot", "herb", "parsley", "mint", "cilantro", "zucchini", "mushroom", "potato", "corn"]):
@@ -416,6 +441,8 @@ if not recipe_details_df.empty:
             col_map[c] = "Unit"
         elif "method" in cl:
             col_map[c] = "Method"
+        elif "image" in cl:
+            col_map[c] = "Image URL"
     recipe_details_df.rename(columns=col_map, inplace=True)
     if "Recipe Name" in recipe_details_df.columns:
         recipe_details_df["Recipe Name"] = recipe_details_df["Recipe Name"].ffill()
@@ -430,13 +457,18 @@ else:
     recipes_clean_df = pd.DataFrame()
 
 # ==========================================
-# 7. ENHANCED RECIPE MODAL
+# 7. ENHANCED RECIPE MODAL (IMAGE, DONUT & STEPS)
 # ==========================================
 if hasattr(st, "dialog"):
     @st.dialog("Recipe Guide / دليل الوصفة", width="large")
     def display_recipe_dialog(rec):
         title_view = f"📖 {rec['name_ar']} ({rec['name']})" if is_ar else f"📖 {rec['name']} ({rec['name_ar']})"
         st.markdown(f"### {title_view}")
+
+        # Top Recipe Image Header inside Dialog
+        modal_img = rec.get("resolved_image", "")
+        if modal_img:
+            st.image(modal_img, use_container_width=True)
 
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
         m_col1.metric("السعرات" if is_ar else "Calories", f"{int(rec['cals'])} kcal")
@@ -863,6 +895,15 @@ elif st.session_state.page == 2:
                         name_en = str(recipe.get("Menu Item", f"Recipe #{idx+1}")).strip()
                         name_ar = str(recipe.get("Menu Item Ar", "")).strip()
 
+                        # Image resolution (from Items Menu sheet or Calories Data details)
+                        raw_img = recipe.get("Image", recipe.get("image", recipe.get("Image URL", "")))
+                        if not raw_img and not recipe_details_df.empty and "Image URL" in recipe_details_df.columns:
+                            m_match = recipe_details_df[recipe_details_df["Recipe Name"].astype(str).str.lower().str.strip() == name_en.lower()]
+                            if not m_match.empty:
+                                raw_img = m_match["Image URL"].dropna().iloc[0] if not m_match["Image URL"].dropna().empty else ""
+                        
+                        resolved_img = resolve_image_url(raw_img)
+
                         is_side_salad = (meal_slot == "Snacks" and (raw_cat == "Salads" or subcat_choice == "Side Salads"))
                         portion_multiplier = 0.5 if is_side_salad else 1.0
 
@@ -874,10 +915,12 @@ elif st.session_state.page == 2:
                         display_title = f"{name_ar}<br><span style='font-size:0.85rem; color:#64748B; font-weight:500;'>{name_en}</span>" if is_ar else f"{name_en}<br><span style='font-size:0.85rem; color:#64748B; font-weight:500;'>{name_ar}</span>"
                         display_badge = ("سلطة جانبية (نصف حصة)" if is_ar else "Side Salad (½ Portion)") if is_side_salad else raw_cat
 
+                        header_media = f'<img src="{resolved_img}">' if resolved_img else '<div style="font-size:3.5rem;">🥗</div>'
+
                         st.markdown(f"""
                         <div class="recipe-card">
                             <div class="recipe-card-header">
-                                <div style="font-size:3rem;">🥗</div>
+                                {header_media}
                                 <div class="badge-count">{display_badge}</div>
                             </div>
                             <div class="recipe-card-body">
@@ -911,6 +954,7 @@ elif st.session_state.page == 2:
                                     "pro": pro,
                                     "carb": carb,
                                     "fat": fat,
+                                    "resolved_image": resolved_img,
                                     "details": recipe
                                 }
                                 display_recipe_dialog(current_selected)
