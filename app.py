@@ -229,24 +229,56 @@ def build_local_image_index():
 
 LOCAL_IMAGES = build_local_image_index()
 
+# ==========================================
+# 3. UNIVERSAL IMAGE MATCHER
+# ==========================================
+def normalize_name(s):
+    if not s:
+        return ""
+    # remove extensions, punctuation, and extra spaces
+    s = re.sub(r"\.(png|jpg|jpeg|webp)$", "", str(s), flags=re.I)
+    return re.sub(r"[^a-zA-Z0-9]", "", s).lower()
+
+@st.cache_data
+def build_image_index():
+    local_map = {}
+    for search_dir in ["images", "."]:
+        if os.path.exists(search_dir):
+            for root, _, files in os.walk(search_dir):
+                for f in files:
+                    if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+                        full_p = os.path.join(root, f)
+                        norm_k = normalize_name(f)
+                        if norm_k and norm_k not in local_map:
+                            local_map[norm_k] = full_p
+    return local_map
+
+LOCAL_IMAGE_INDEX = build_image_index()
+
 def find_recipe_image(name_en, category=""):
     if not name_en:
         return None
-    key = str(name_en).strip().lower()
-    if key in LOCAL_IMAGES:
-        return LOCAL_IMAGES[key]
     
-    # Try with .png and .jpg
-    if f"{key}.png" in LOCAL_IMAGES:
-        return LOCAL_IMAGES[f"{key}.png"]
-    if f"{key}.jpg" in LOCAL_IMAGES:
-        return LOCAL_IMAGES[f"{key}.jpg"]
+    clean_target = normalize_name(name_en)
+    
+    # 1. Check local indexed disk files (exact normalized match)
+    if clean_target in LOCAL_IMAGE_INDEX:
+        return LOCAL_IMAGE_INDEX[clean_target]
+    
+    # 2. Check substring match in local index
+    for k, v in LOCAL_IMAGE_INDEX.items():
+        if clean_target in k or k in clean_target:
+            return v
 
-    # Fuzzy check
-    for ik, iv in LOCAL_IMAGES.items():
-        if key in ik or ik in key:
-            return iv
-    return None
+    # 3. Direct GitHub Raw Fallback (Loads from GitHub CDN if local scan missed it)
+    clean_encoded = urllib.parse.quote(str(name_en).strip())
+    cat_encoded = urllib.parse.quote(str(category).strip())
+    
+    # Try category path on GitHub
+    if category:
+        return f"https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/images/{cat_encoded}/{clean_encoded}.png"
+    
+    return f"https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/images/{clean_encoded}.png"
 
 def extract_numeric(val, default=0.0):
     if isinstance(val, (pd.Series, list)):
@@ -885,6 +917,27 @@ elif st.session_state.page == 2:
                         else:
                             header_media = '<div style="display:flex; width:100%; height:100%; align-items:center; justify-content:center; font-size:3.5rem; background:#F8FAFC;">🥗</div>'
 
+                        # Render Recipe Card Image
+                        with st.container():
+                            st.markdown(f"""
+                            <div class="recipe-card">
+                                <div class="recipe-card-header">
+                                    <div class="badge-count">{display_badge}</div>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Streamlit native image loader
+                            img_shown = False
+                            if local_img_path:
+                                try:
+                                    st.image(local_img_path, use_container_width=True)
+                                    img_shown = True
+                                except Exception:
+                                    img_shown = False
+                            
+                            if not img_shown:
+                                st.markdown('<div style="height:120px; display:flex; align-items:center; justify-content:center; font-size:3.5rem; background:#F8FAFC; border-radius:12px; margin-bottom:8px;">🥗</div>', unsafe_allow_html=True)
                         # Render Recipe Card
                         with st.container():
                             st.markdown(f"""
