@@ -283,33 +283,50 @@ def extract_numeric(val, default=0.0):
             return default
     return default
 
-def resolve_image_url(img_val):
-    if not img_val or pd.isna(img_val):
-        return ""
-    val = str(img_val).strip()
-    if not val or val.lower() in ["none", "nan", "#n/a", ""]:
-        return ""
+def resolve_image_url(img_val, category="", name_en=""):
+    # Check explicitly passed value
+    candidates = []
+    if img_val and not pd.isna(img_val):
+        v = str(img_val).strip()
+        if v and v.lower() not in ["none", "nan", "#n/a", ""]:
+            candidates.append(v)
 
-    # 1. Direct Web URLs (Imgur, Postimages, Cloudinary, AWS S3, etc.)
-    if val.startswith("http://") or val.startswith("https://"):
-        if "drive.google.com" in val:
-            file_id = re.search(r"/(?:d|folders|file/d)/([a-zA-Z0-9_-]+)", val) or re.search(r"id=([a-zA-Z0-9_-]+)", val)
-            if file_id:
-                return f"https://drive.google.com/thumbnail?id={file_id.group(1)}&sz=w1000"
-        return val
+    # Add name-based image candidates
+    if name_en:
+        clean_base = str(name_en).strip()
+        candidates.extend([
+            f"{clean_base}.png",
+            f"{clean_base}.jpg",
+            f"images/{clean_base}.png",
+            f"images/{clean_base}.jpg",
+            f"images/{category}/{clean_base}.png" if category else "",
+            f"images/{category}/{clean_base}.jpg" if category else "",
+        ])
 
-    # 2. Local files in root or images subfolder
-    if os.path.exists(val):
-        return val
-    if os.path.exists(os.path.join("images", val)):
-        return os.path.join("images", val)
+    for val in candidates:
+        if not val:
+            continue
 
-    # 3. GitHub Raw URLs (checks both root and images/ folder)
-    clean_name = val.replace(" ", "%20")
-    if not clean_name.endswith((".png", ".jpg", ".jpeg", ".webp")):
-        clean_name += ".png"
-        
-    return f"https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/images/{clean_name}"
+        # Direct Web URL
+        if val.startswith("http://") or val.startswith("https://"):
+            if "drive.google.com" in val:
+                file_id = re.search(r"/(?:d|folders|file/d)/([a-zA-Z0-9_-]+)", val) or re.search(r"id=([a-zA-Z0-9_-]+)", val)
+                if file_id:
+                    return f"https://drive.google.com/thumbnail?id={file_id.group(1)}&sz=w1000"
+            return val
+
+        # Local files in repo
+        if os.path.exists(val):
+            return val
+        if os.path.exists(os.path.join("images", val)):
+            return os.path.join("images", val)
+
+    # Return GitHub raw fallback for the first valid candidate
+    if candidates:
+        first_c = candidates[0].replace(" ", "%20")
+        return f"https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/{first_c}"
+
+    return ""
 
 def categorize_ingredient(name):
     n = str(name).lower()
@@ -467,10 +484,14 @@ if hasattr(st, "dialog"):
         title_view = f"📖 {rec['name_ar']} ({rec['name']})" if is_ar else f"📖 {rec['name']} ({rec['name_ar']})"
         st.markdown(f"### {title_view}")
 
-        # Top Recipe Image Header inside Dialog
         modal_img = rec.get("resolved_image", "")
         if modal_img:
-            st.image(modal_img, use_container_width=True)
+            st.markdown(
+                f'<div style="width:100%; height:240px; border-radius:14px; overflow:hidden; margin-bottom:15px; background:#F1F5F9;">'
+                f'<img src="{modal_img}" onerror="this.parentElement.style.display=\'none\';" style="width:100%; height:100%; object-fit:cover;">'
+                f'</div>',
+                unsafe_allow_html=True
+            )
 
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
         m_col1.metric("السعرات" if is_ar else "Calories", f"{int(rec['cals'])} kcal")
@@ -564,7 +585,7 @@ if hasattr(st, "dialog"):
                     st.markdown(donut_html, unsafe_allow_html=True)
 
                 with legend_col:
-                    st.markdown(f"<div style='height: 10px;'></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
                     st.markdown(f"""
                     <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:12px; padding:12px; margin-bottom:10px;">
                         <span style="font-weight:700; color:#059669;">{'البروتين (4 kcal/g)' if is_ar else 'Protein (4 kcal/g)'}</span>
@@ -897,14 +918,13 @@ elif st.session_state.page == 2:
                         name_en = str(recipe.get("Menu Item", f"Recipe #{idx+1}")).strip()
                         name_ar = str(recipe.get("Menu Item Ar", "")).strip()
 
-                        # Image resolution (from Items Menu sheet or Calories Data details)
                         raw_img = recipe.get("Image", recipe.get("image", recipe.get("Image URL", "")))
                         if not raw_img and not recipe_details_df.empty and "Image URL" in recipe_details_df.columns:
                             m_match = recipe_details_df[recipe_details_df["Recipe Name"].astype(str).str.lower().str.strip() == name_en.lower()]
                             if not m_match.empty:
                                 raw_img = m_match["Image URL"].dropna().iloc[0] if not m_match["Image URL"].dropna().empty else ""
                         
-                        resolved_img = resolve_image_url(raw_img)
+                        resolved_img = resolve_image_url(raw_img, category=raw_cat, name_en=name_en)
 
                         is_side_salad = (meal_slot == "Snacks" and (raw_cat == "Salads" or subcat_choice == "Side Salads"))
                         portion_multiplier = 0.5 if is_side_salad else 1.0
@@ -917,10 +937,13 @@ elif st.session_state.page == 2:
                         display_title = f"{name_ar}<br><span style='font-size:0.85rem; color:#64748B; font-weight:500;'>{name_en}</span>" if is_ar else f"{name_en}<br><span style='font-size:0.85rem; color:#64748B; font-weight:500;'>{name_ar}</span>"
                         display_badge = ("سلطة جانبية (نصف حصة)" if is_ar else "Side Salad (½ Portion)") if is_side_salad else raw_cat
 
-                       header_media = f"""
-                        <img src="{resolved_img}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width:100%; height:100%; object-fit:cover;">
-                        <div style="display:{'none' if resolved_img else 'flex'}; width:100%; height:100%; align-items:center; justify-content:center; font-size:3.5rem; background:#F1F5F9;">🥗</div>
-                        """ if resolved_img else '<div style="display:flex; width:100%; height:100%; align-items:center; justify-content:center; font-size:3.5rem; background:#F1F5F9;">🥗</div>'
+                        if resolved_img:
+                            header_media = (
+                                f'<img src="{resolved_img}" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';" style="width:100%; height:100%; object-fit:cover;">'
+                                f'<div style="display:none; width:100%; height:100%; align-items:center; justify-content:center; font-size:3.5rem; background:#F1F5F9;">🥗</div>'
+                            )
+                        else:
+                            header_media = '<div style="display:flex; width:100%; height:100%; align-items:center; justify-content:center; font-size:3.5rem; background:#F1F5F9;">🥗</div>'
 
                         st.markdown(f"""
                         <div class="recipe-card">
