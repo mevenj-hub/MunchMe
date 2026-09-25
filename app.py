@@ -279,16 +279,18 @@ else:
 # ==========================================
 # 6. HEADER, LOGO & LANGUAGE SWITCHER
 # ==========================================
-h_col1, h_col2, h_col3 = st.columns([1, 6, 2])
+h_col1, h_col2, h_col3 = st.columns([1.5, 6, 2.5])
 
 with h_col1:
-    # Guaranteed Logo rendering (local file with GitHub raw fallback)
-    logo_path = "logo.png"
-    github_logo_url = "https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/logo.png"
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=88)
+    # Checks for all common logo variations uploaded to repository
+    if os.path.exists("logo.jpg"):
+        st.image("logo.jpg", width=85)
+    elif os.path.exists("logo.png"):
+        st.image("logo.png", width=85)
+    elif os.path.exists("Munch Me App Logo.jpg"):
+        st.image("Munch Me App Logo.jpg", width=85)
     else:
-        st.image(github_logo_url, width=88)
+        st.image("https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/logo.jpg", width=85)
 
 with h_col2:
     if is_ar:
@@ -303,8 +305,7 @@ with h_col3:
         "Language / اللغة",
         ["English", "العربية"],
         horizontal=True,
-        index=0 if st.session_state.lang == "English" else 1,
-        label_visibility="collapsed"
+        index=0 if st.session_state.lang == "English" else 1
     )
     if lang_selection != st.session_state.lang:
         st.session_state.lang = lang_selection
@@ -330,7 +331,7 @@ if st.session_state.page == 1:
         )
         
         st.session_state.user["dob"] = st.date_input(
-            "تاريخ الميلاد" if is_ar else "Date of Birth",
+            "تاريخ الميلاد" if is_ar else "Date of Birth (Calendar Select)",
             value=st.session_state.user["dob"],
             min_value=datetime.date(1940, 1, 1),
             max_value=datetime.date.today()
@@ -537,14 +538,12 @@ elif st.session_state.page == 2:
         if recipes_clean_df.empty:
             st.warning("Connecting to Google Sheets...")
         else:
-            # SEARCH BAR
             search_query = st.text_input(
                 "🔍 بحث عن وجبة بالاسم (عربي أو إنجليزي)..." if is_ar else "🔍 Search recipe by name (English or Arabic)...",
                 value="",
                 placeholder="e.g. Chicken Wrap, دجاج سيزر, Salad..."
             )
 
-            # Slot selection
             st.markdown(f"#### {'اختر نوع الوجبة' if is_ar else 'Select Meal Slot'}")
             slot_options = list(MEAL_STRUCTURE.keys())
             slot_display = [MEAL_SLOTS_AR[s] for s in slot_options] if is_ar else slot_options
@@ -573,7 +572,6 @@ elif st.session_state.page == 2:
             else:
                 filtered_df = recipes_clean_df[recipes_clean_df["Categories"] == subcat_choice].copy()
 
-            # Apply Search Filter
             if search_query.strip():
                 q = search_query.strip().lower()
                 filtered_df = filtered_df[
@@ -735,7 +733,6 @@ elif st.session_state.page == 2:
         if not st.session_state.raw_grocery_items:
             st.info("مفكرة التسوق فارغة! اضغط على '+ تناول اليوم' أو '+ أضف للأسبوع' في أي وصفة لإضافة مقاديرها تلقائياً." if is_ar else "Your notepad is empty! Click '+ Eat Today' or '+ Add to Week' on any recipe card to build your ingredient list.")
         else:
-            # Group items by aisle
             items_by_cat = {}
             for ing_name, data in st.session_state.raw_grocery_items.items():
                 cat = data.get("category", "🧂 Pantry, Oils, Spices & Dressings")
@@ -751,7 +748,6 @@ elif st.session_state.page == 2:
                     "amount": f"{q_val} {data['unit']}"
                 })
 
-            # Render as interactive Note Cards
             for section, items in sorted(items_by_cat.items()):
                 st.markdown(f"""
                 <div class="note-card">
@@ -772,7 +768,7 @@ elif st.session_state.page == 2:
                     
                     with c_txt:
                         if is_checked:
-                            st.markdown(f"<span style='text-decoration: line-through; color: #94A3B8; font-weight:500;'>{item['name']} — <b>{item['amount']}</b> ✅ (متوفر / تم الشراء)</span>", unsafe_allow_html=True)
+                            st.markdown(f"<span style='text-decoration: line-through; color: #94A3B8; font-weight:500;'>{item['name']} — <b>{item['amount']}</b> ✅ ({'متوفر / تم الشراء' if is_ar else 'Bought / Available'})</span>", unsafe_allow_html=True)
                         else:
                             st.markdown(f"<span style='color: #1E293B; font-weight:600;'>{item['name']}</span> — <span style='color:#059669; font-weight:700;'>{item['amount']}</span>", unsafe_allow_html=True)
 
