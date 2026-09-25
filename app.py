@@ -210,40 +210,23 @@ def categorize_ingredient(name):
 
 def generate_donut_chart_svg(pro_kcal, carb_kcal, fat_kcal, total_cals):
     total = max(1.0, pro_kcal + carb_kcal + fat_kcal)
-    p_pct = pro_kcal / total
-    c_pct = carb_kcal / total
-    f_pct = fat_kcal / total
+    p_pct = round((pro_kcal / total) * 100, 1)
+    c_pct = round((carb_kcal / total) * 100, 1)
+    p_end = p_pct
+    c_end = round(p_pct + c_pct, 1)
 
-    # Circumference for r=70
-    circ = 2 * math.pi * 70  # ~439.82
-    p_dash = circ * p_pct
-    c_dash = circ * c_pct
-    f_dash = circ * f_pct
-
-    p_offset = 0.0
-    c_offset = -p_dash
-    f_offset = -(p_dash + c_dash)
-
-    svg = f"""
-    <div style="display:flex; justify-content:center; align-items:center; margin: 15px 0;">
-      <svg width="210" height="210" viewBox="0 0 200 200">
-        <circle cx="100" cy="100" r="70" fill="transparent" stroke="#E2E8F0" stroke-width="26" />
-        <!-- Protein (Green) -->
-        <circle cx="100" cy="100" r="70" fill="transparent" stroke="#059669" stroke-width="26"
-                stroke-dasharray="{p_dash:.2f} {circ:.2f}" stroke-dashoffset="{p_offset:.2f}" transform="rotate(-90 100 100)" />
-        <!-- Carbs (Yellow) -->
-        <circle cx="100" cy="100" r="70" fill="transparent" stroke="#CA8A04" stroke-width="26"
-                stroke-dasharray="{c_dash:.2f} {circ:.2f}" stroke-dashoffset="{c_offset:.2f}" transform="rotate(-90 100 100)" />
-        <!-- Fat (Red) -->
-        <circle cx="100" cy="100" r="70" fill="transparent" stroke="#E11D48" stroke-width="26"
-                stroke-dasharray="{f_dash:.2f} {circ:.2f}" stroke-dashoffset="{f_offset:.2f}" transform="rotate(-90 100 100)" />
-        
-        <text x="100" y="96" text-anchor="middle" font-size="24" font-weight="800" fill="#0F172A" font-family="Plus Jakarta Sans, sans-serif">{int(total_cals)}</text>
-        <text x="100" y="118" text-anchor="middle" font-size="12" font-weight="700" fill="#64748B" font-family="Plus Jakarta Sans, sans-serif">KCAL</text>
-      </svg>
-    </div>
-    """
-    return svg
+    # Pure CSS conic-gradient donut chart (no SVG indentation bugs)
+    return (
+        f'<div style="display:flex; justify-content:center; align-items:center; padding: 15px 0;">'
+        f'<div style="width: 175px; height: 175px; border-radius: 50%; '
+        f'background: conic-gradient(#059669 0% {p_end}%, #CA8A04 {p_end}% {c_end}%, #E11D48 {c_end}% 100%); '
+        f'display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">'
+        f'<div style="width: 118px; height: 118px; background: #FFFFFF; border-radius: 50%; '
+        f'display: flex; flex-direction: column; align-items: center; justify-content: center;">'
+        f'<span style="font-size: 1.6rem; font-weight: 800; color: #0F172A; line-height: 1;">{int(total_cals)}</span>'
+        f'<span style="font-size: 0.75rem; font-weight: 700; color: #64748B; margin-top: 4px;">KCAL</span>'
+        f'</div></div></div>'
+    )
 
 # ==========================================
 # 3. SESSION STATE MANAGEMENT
