@@ -53,16 +53,49 @@ st.markdown(f"""
         text-align: center;
     }}
 
-    /* Card Wrapper */
-    div[data-testid="stVerticalBlockBorderWrapper"] {{
-        border-radius: 20px !important;
-        border: 1.5px solid #E2E8F0 !important;
-        background: #FFFFFF !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03) !important;
-        overflow: hidden !important;
-        padding: 0.75rem !important;
+    .recipe-card {{
+        background: white;
+        border-radius: 20px;
+        border: 1.5px solid #E2E8F0;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        position: relative;
     }}
-
+    .recipe-card-header {{
+        position: relative;
+        height: 165px;
+        background-color: #F8FAFC;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }}
+    .recipe-card-header img {{
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }}
+    .badge-count {{
+        position: absolute;
+        top: 12px;
+        {'left: 12px;' if is_ar else 'right: 12px;'}
+        background: rgba(30, 41, 59, 0.85);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        z-index: 2;
+    }}
+    .recipe-card-body {{
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+    }}
     .macro-pill {{
         border-radius: 10px;
         padding: 6px 10px;
@@ -176,7 +209,7 @@ def translate_unit(unit):
     return UNITS_TRANSLATION_MAP.get(str(unit).strip().lower(), str(unit).strip())
 
 # ==========================================
-# 3. NUMERIC & IMAGE HELPERS (SAFE STREAMLIT LOADER)
+# 3. NUMERIC & IMAGE HELPERS (SAFE CORS & EXPORT)
 # ==========================================
 def extract_numeric(val, default=0.0):
     if isinstance(val, (pd.Series, list)):
@@ -192,34 +225,23 @@ def extract_numeric(val, default=0.0):
             return default
     return default
 
-def get_best_image_source(img_val, name_en=""):
-    if isinstance(img_val, (pd.Series, list)):
-        val = str(img_val[0]).strip() if len(img_val) > 0 and not pd.isna(img_val[0]) else ""
-    elif pd.isna(img_val) or img_val is None:
-        val = ""
-    else:
-        val = str(img_val).strip()
-
-    # Direct Web URL
-    if val and (val.startswith("http://") or val.startswith("https://")):
-        return val
-
-    # Local Repository check
-    if val and os.path.exists(val):
-        return val
-    if val and os.path.exists(os.path.join("images", val)):
-        return os.path.join("images", val)
-
-    if name_en:
-        clean_base = str(name_en).strip()
-        for ext in [".png", ".jpg", ".jpeg"]:
-            cand = f"{clean_base}{ext}"
-            if os.path.exists(cand):
-                return cand
-            if os.path.exists(os.path.join("images", cand)):
-                return os.path.join("images", cand)
-
-    return None
+def format_drive_embed_url(val):
+    if not val or pd.isna(val):
+        return ""
+    v = str(val).strip()
+    if v.lower() in ["none", "nan", "#n/a", ""]:
+        return ""
+    
+    # Extract file ID from any Drive or lh3 URL
+    id_match = re.search(r"/(?:d|folders|file/d)/([a-zA-Z0-9_-]+)", v) or re.search(r"id=([a-zA-Z0-9_-]+)", v)
+    if id_match:
+        file_id = id_match.group(1)
+        # Using Google Drive export=view format which supports no-referrer embedding
+        return f"https://drive.google.com/uc?export=view&id={file_id}"
+    
+    if v.startswith("http://") or v.startswith("https://"):
+        return v
+    return ""
 
 def categorize_ingredient(name):
     n = str(name).lower()
@@ -332,7 +354,7 @@ MEAL_SLOTS_AR = {
 # ==========================================
 SHEET_ID = "1LQsOAfiVeFzsukc1FMfGtmJgx1IcOYxBbPy_PGuIXKw"
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30)
 def load_sheet_by_gid(gid):
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
     try:
@@ -376,17 +398,18 @@ if not recipes_summary_df.empty and "Total Calories" in recipes_summary_df.colum
 else:
     recipes_clean_df = pd.DataFrame()
 
-# Pre-index images by recipe name for fast lookup
+# Pre-index images by recipe name from Calories Data
 recipe_img_lookup = {}
 if not recipe_details_df.empty and "Image URL" in recipe_details_df.columns:
     for _, row in recipe_details_df.dropna(subset=["Image URL"]).iterrows():
         rname = str(row.get("Recipe Name", "")).strip().lower()
-        raw_url = str(row["Image URL"]).strip()
-        if rname and raw_url and rname not in recipe_img_lookup:
-            recipe_img_lookup[rname] = raw_url
+        raw_val = str(row["Image URL"]).strip()
+        embed_url = format_drive_embed_url(raw_val)
+        if rname and embed_url and rname not in recipe_img_lookup:
+            recipe_img_lookup[rname] = embed_url
 
 # ==========================================
-# 7. ENHANCED RECIPE MODAL (DONUT & STEPS)
+# 7. ENHANCED RECIPE MODAL
 # ==========================================
 if hasattr(st, "dialog"):
     @st.dialog("Recipe Guide / دليل الوصفة", width="large")
@@ -394,13 +417,14 @@ if hasattr(st, "dialog"):
         title_view = f"📖 {rec['name_ar']} ({rec['name']})" if is_ar else f"📖 {rec['name']} ({rec['name_ar']})"
         st.markdown(f"### {title_view}")
 
-        # Streamlit Native Modal Image
-        modal_img = rec.get("resolved_image", None)
+        modal_img = rec.get("resolved_image", "")
         if modal_img:
-            try:
-                st.image(modal_img, use_container_width=True)
-            except Exception:
-                pass
+            st.markdown(
+                f'<div style="width:100%; height:240px; border-radius:14px; overflow:hidden; margin-bottom:15px; background:#F8FAFC;">'
+                f'<img src="{modal_img}" referrerpolicy="no-referrer" onerror="this.parentElement.style.display=\'none\';" style="width:100%; height:100%; object-fit:cover;">'
+                f'</div>',
+                unsafe_allow_html=True
+            )
 
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
         m_col1.metric("السعرات" if is_ar else "Calories", f"{int(rec['cals'])} kcal")
@@ -839,11 +863,9 @@ elif st.session_state.page == 2:
                         name_ar = str(recipe.get("Menu Item Ar", "")).strip()
 
                         # Image resolution using indexed dictionary lookup
-                        raw_img = recipe_img_lookup.get(name_en.lower(), "")
-                        if not raw_img:
-                            raw_img = recipe.get("Image", recipe.get("Image URL", ""))
-                        
-                        resolved_img = get_best_image_source(raw_img, name_en=name_en)
+                        resolved_img = recipe_img_lookup.get(name_en.lower(), "")
+                        if not resolved_img:
+                            resolved_img = format_drive_embed_url(recipe.get("Image", recipe.get("Image URL", "")))
 
                         is_side_salad = (meal_slot == "Snacks" and (raw_cat == "Salads" or subcat_choice == "Side Salads"))
                         portion_multiplier = 0.5 if is_side_salad else 1.0
@@ -856,105 +878,112 @@ elif st.session_state.page == 2:
                         display_title = f"{name_ar}<br><span style='font-size:0.85rem; color:#64748B; font-weight:500;'>{name_en}</span>" if is_ar else f"{name_en}<br><span style='font-size:0.85rem; color:#64748B; font-weight:500;'>{name_ar}</span>"
                         display_badge = ("سلطة جانبية (نصف حصة)" if is_ar else "Side Salad (½ Portion)") if is_side_salad else raw_cat
 
+                        if resolved_img:
+                            header_media = (
+                                f'<img src="{resolved_img}" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';" style="width:100%; height:100%; object-fit:cover;">'
+                                f'<div style="display:none; width:100%; height:100%; align-items:center; justify-content:center; font-size:3.5rem; background:#F8FAFC;">🥗</div>'
+                            )
+                        else:
+                            header_media = '<div style="display:flex; width:100%; height:100%; align-items:center; justify-content:center; font-size:3.5rem; background:#F8FAFC;">🥗</div>'
+
                         is_fav = name_en in st.session_state.favorite_recipes
                         fav_icon = "❤️" if is_fav else "🤍"
 
-                        # Render Clean Streamlit Box Card
-                        with st.container(border=True):
-                            # Native Streamlit Image to bypass browser CORS blocks
-                            img_loaded = False
-                            if resolved_img:
-                                try:
-                                    st.image(resolved_img, use_container_width=True)
-                                    img_loaded = True
-                                except Exception:
-                                    img_loaded = False
-                            
-                            if not img_loaded:
-                                st.markdown('<div style="height:140px; display:flex; align-items:center; justify-content:center; font-size:3.5rem; background:#F8FAFC; border-radius:12px; margin-bottom:8px;">🥗</div>', unsafe_allow_html=True)
-
-                            st.markdown(f"<span style='font-size:0.75rem; font-weight:700; background:#E2E8F0; padding:2px 8px; border-radius:12px;'>{display_badge}</span>", unsafe_allow_html=True)
-                            st.markdown(f"<div style='font-weight:700; font-size:1rem; color:#0F172A; min-height:45px; margin-top:4px;'>{display_title}</div>", unsafe_allow_html=True)
-                            st.markdown(f"<div style='font-weight:800; font-size:1.05rem; color:#0F172A; margin: 6px 0;'>🔥 {cals:.0f} kcal</div>", unsafe_allow_html=True)
-
-                            st.markdown(f"""
-                            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:4px; margin-bottom:10px;">
-                                <div class="macro-pill macro-p">P {pro:.1f}g</div>
-                                <div class="macro-pill macro-c">C {carb:.1f}g</div>
-                                <div class="macro-pill macro-f">F {fat:.1f}g</div>
+                        st.markdown(f"""
+                        <div class="recipe-card">
+                            <div class="recipe-card-header">
+                                {header_media}
+                                <div class="badge-count">{display_badge}</div>
                             </div>
-                            """, unsafe_allow_html=True)
+                            <div class="recipe-card-body">
+                                <div style="font-weight:700; font-size:1rem; color:#0F172A; min-height:48px; line-height:1.2;">
+                                    {display_title}
+                                </div>
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin: 8px 0;">
+                                    <div>
+                                        <span style="font-size:0.75rem; color:#64748B; font-weight:700;">{'السعرات' if is_ar else 'ENERGY'}</span>
+                                        <div style="font-weight:800; font-size:1.05rem; color:#0F172A;">🔥 {cals:.0f} kcal</div>
+                                    </div>
+                                </div>
+                                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; margin-bottom:12px;">
+                                    <div class="macro-pill macro-p">P {pro:.1f}g</div>
+                                    <div class="macro-pill macro-c">C {carb:.1f}g</div>
+                                    <div class="macro-pill macro-f">F {fat:.1f}g</div>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
 
-                            c_action1, c_action2, c_fav = st.columns([1.6, 1.6, 0.8])
-                            with c_action1:
-                                guide_btn_label = "الوصفة" if is_ar else "Guide"
-                                if st.button(guide_btn_label, key=f"guide_{meal_slot}_{idx}", use_container_width=True):
-                                    current_selected = {
-                                        "name": f"{name_en} (Side Salad ½)" if is_side_salad else name_en,
-                                        "clean_name": name_en,
-                                        "name_ar": name_ar,
-                                        "cals": cals,
-                                        "pro": pro,
-                                        "carb": carb,
-                                        "fat": fat,
-                                        "resolved_image": resolved_img,
-                                        "details": recipe
-                                    }
-                                    display_recipe_dialog(current_selected)
+                        c_action1, c_action2, c_fav = st.columns([1.8, 1.8, 0.8])
+                        with c_action1:
+                            guide_btn_label = "الوصفة" if is_ar else "Guide"
+                            if st.button(guide_btn_label, key=f"guide_{meal_slot}_{idx}", use_container_width=True):
+                                current_selected = {
+                                    "name": f"{name_en} (Side Salad ½)" if is_side_salad else name_en,
+                                    "clean_name": name_en,
+                                    "name_ar": name_ar,
+                                    "cals": cals,
+                                    "pro": pro,
+                                    "carb": carb,
+                                    "fat": fat,
+                                    "resolved_image": resolved_img,
+                                    "details": recipe
+                                }
+                                display_recipe_dialog(current_selected)
 
-                            with c_action2:
-                                add_label = ("+ أضف" if "1" in st.session_state.plan_mode else "+ أسبوع") if is_ar else ("+ Add" if "Today" in st.session_state.plan_mode else "+ Week")
-                                if st.button(add_label, key=f"eat_{meal_slot}_{idx}", use_container_width=True):
-                                    st.session_state.user["consumed_calories"] += cals
-                                    st.session_state.user["consumed_protein"] += pro
-                                    st.session_state.user["consumed_carbs"] += carb
-                                    st.session_state.user["consumed_fat"] += fat
+                        with c_action2:
+                            add_label = ("+ أضف" if "1" in st.session_state.plan_mode else "+ أسبوع") if is_ar else ("+ Add" if "Today" in st.session_state.plan_mode else "+ Week")
+                            if st.button(add_label, key=f"eat_{meal_slot}_{idx}", use_container_width=True):
+                                st.session_state.user["consumed_calories"] += cals
+                                st.session_state.user["consumed_protein"] += pro
+                                st.session_state.user["consumed_carbs"] += carb
+                                st.session_state.user["consumed_fat"] += fat
 
-                                    st.session_state.logged_meals.append({
-                                        "Slot": meal_slot,
-                                        "Meal": name_ar if is_ar else name_en,
-                                        "Calories": round(cals),
-                                        "Protein (g)": round(pro, 1),
-                                        "Carbs (g)": round(carb, 1),
-                                        "Fat (g)": round(fat, 1)
-                                    })
+                                st.session_state.logged_meals.append({
+                                    "Slot": meal_slot,
+                                    "Meal": name_ar if is_ar else name_en,
+                                    "Calories": round(cals),
+                                    "Protein (g)": round(pro, 1),
+                                    "Carbs (g)": round(carb, 1),
+                                    "Fat (g)": round(fat, 1)
+                                })
 
-                                    if not recipe_details_df.empty and "Ingredients" in recipe_details_df.columns:
+                                if not recipe_details_df.empty and "Ingredients" in recipe_details_df.columns:
+                                    matched_rows = recipe_details_df[
+                                        recipe_details_df["Recipe Name"].astype(str).str.lower().str.strip() == name_en.lower()
+                                    ]
+                                    if matched_rows.empty:
                                         matched_rows = recipe_details_df[
-                                            recipe_details_df["Recipe Name"].astype(str).str.lower().str.strip() == name_en.lower()
+                                            recipe_details_df.astype(str).apply(lambda r: name_en.lower() in r.to_string().lower(), axis=1)
                                         ]
-                                        if matched_rows.empty:
-                                            matched_rows = recipe_details_df[
-                                                recipe_details_df.astype(str).apply(lambda r: name_en.lower() in r.to_string().lower(), axis=1)
-                                            ]
 
-                                        for _, ing_row in matched_rows.iterrows():
-                                            raw_ing_n = str(ing_row.get("Ingredients", "")).strip()
-                                            if raw_ing_n and raw_ing_n.lower() not in ["nan", "ingredients"]:
-                                                raw_q = extract_numeric(ing_row.get("Qtty.", 100)) * portion_multiplier
-                                                raw_u = str(ing_row.get("Unit", "g")).strip()
-                                                if not raw_u or raw_u.lower() == "nan":
-                                                    raw_u = "g"
-                                                
-                                                ing_cat = categorize_ingredient(raw_ing_n)
+                                    for _, ing_row in matched_rows.iterrows():
+                                        raw_ing_n = str(ing_row.get("Ingredients", "")).strip()
+                                        if raw_ing_n and raw_ing_n.lower() not in ["nan", "ingredients"]:
+                                            raw_q = extract_numeric(ing_row.get("Qtty.", 100)) * portion_multiplier
+                                            raw_u = str(ing_row.get("Unit", "g")).strip()
+                                            if not raw_u or raw_u.lower() == "nan":
+                                                raw_u = "g"
+                                            
+                                            ing_cat = categorize_ingredient(raw_ing_n)
 
-                                                if raw_ing_n in st.session_state.raw_grocery_items:
-                                                    st.session_state.raw_grocery_items[raw_ing_n]["quantity"] += raw_q
-                                                else:
-                                                    st.session_state.raw_grocery_items[raw_ing_n] = {
-                                                        "quantity": raw_q,
-                                                        "unit": raw_u,
-                                                        "category": ing_cat
-                                                    }
-                                    st.rerun()
+                                            if raw_ing_n in st.session_state.raw_grocery_items:
+                                                st.session_state.raw_grocery_items[raw_ing_n]["quantity"] += raw_q
+                                            else:
+                                                st.session_state.raw_grocery_items[raw_ing_n] = {
+                                                    "quantity": raw_q,
+                                                    "unit": raw_u,
+                                                    "category": ing_cat
+                                                }
+                                st.rerun()
 
-                            with c_fav:
-                                if st.button(fav_icon, key=f"fav_{meal_slot}_{idx}", use_container_width=True):
-                                    if is_fav:
-                                        st.session_state.favorite_recipes.remove(name_en)
-                                    else:
-                                        st.session_state.favorite_recipes.add(name_en)
-                                    st.rerun()
+                        with c_fav:
+                            if st.button(fav_icon, key=f"fav_{meal_slot}_{idx}", use_container_width=True):
+                                if is_fav:
+                                    st.session_state.favorite_recipes.remove(name_en)
+                                else:
+                                    st.session_state.favorite_recipes.add(name_en)
+                                st.rerun()
 
     # ==========================================
     # TAB 2: NOTE-STYLE GROCERY LIST & EXPORTERS
