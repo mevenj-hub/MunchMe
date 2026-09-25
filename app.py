@@ -4,6 +4,7 @@ import datetime
 import os
 import re
 import math
+import urllib.parse
 from google import genai
 
 # ==========================================
@@ -61,6 +62,7 @@ st.markdown(f"""
         display: flex;
         flex-direction: column;
         height: 100%;
+        position: relative;
     }}
     .recipe-card-header {{
         position: relative;
@@ -87,6 +89,22 @@ st.markdown(f"""
         font-size: 0.75rem;
         font-weight: 700;
         z-index: 2;
+    }}
+    .fav-badge {{
+        position: absolute;
+        top: 12px;
+        {'right: 12px;' if is_ar else 'left: 12px;'}
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        z-index: 2;
+        cursor: pointer;
     }}
     .recipe-card-body {{
         padding: 1.25rem;
@@ -167,111 +185,51 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. BILINGUAL INGREDIENTS & UNIT TRANSLATOR
+# 2. BILINGUAL TRANSLATOR DICTIONARIES
 # ==========================================
 INGREDIENTS_TRANSLATION_MAP = {
-    "egg": "بيض",
-    "eggs": "بيض",
-    "olive oil": "زيت زيتون",
-    "sourdough": "خبز الساوردو",
-    "pita bread (small)": "خبز بيتا صغير",
-    "pita bread": "خبز بيتا",
-    "toast": "توست أسمر / أبيض",
-    "black olives": "زيتون أسود",
-    "olives": "زيتون",
-    "makdoos": "مكدوس",
-    "labneh": "لبنة",
-    "cucumber": "خيار",
-    "cherry tomatoes": "طماطم كرزية",
-    "tomato": "طماطم",
-    "tomatoes": "طماطم",
-    "chilli flakes": "رقائق الفلفل الحار",
-    "chili flakes": "رقائق الفلفل الحار",
-    "salt": "ملح طعام",
-    "black pepper": "فلفل أسود",
-    "avocado": "أفوكادو",
-    "lettuce": "خس طازج",
-    "rocca": "جرجير",
-    "parsley": "بقدونس",
-    "mint": "نعناع",
-    "cilantro": "كزبرة خضراء",
-    "spinach": "سبانخ",
-    "chicken breast": "صدر دجاج",
-    "chicken": "دجاج",
-    "chicken broth": "مرق دجاج",
-    "quinoa": "كينوا",
-    "mix beans": "فاصولياء مشكلة",
-    "corn": "ذرة صفراء",
-    "bell pepper": "فلفل رومي حلو",
-    "feta cheese": "جبنة فيتا",
-    "halloumi": "جبنة حلوم",
-    "parmesan": "جبن بارميزان",
-    "cheddar": "جبن شيدر",
-    "greek yogurt": "زبادي يوناني",
-    "yogurt": "زبادي",
-    "milk": "حليب",
-    "almond milk": "حليب لوز",
-    "skim milk": "حليب خالي الدسم",
-    "oats": "شوفان",
-    "rolled oats": "شوفان حبة كاملة",
-    "chia seeds": "بذور الشيا",
-    "flax seeds": "بذور الكتان",
-    "peanut butter": "زبدة الفول السوداني",
-    "almond": "لوز",
-    "almonds": "لوز",
-    "walnut": "جوز (عين جمل)",
-    "walnuts": "جوز",
-    "cashew": "كاجو",
-    "dates": "تمر",
-    "date": "تمر",
-    "banana": "موز",
-    "green apple": "تفاح أخضر",
-    "apple": "تفاح",
-    "blueberry": "توت أزرق",
-    "blueberries": "توت أزرق",
-    "lemon juice": "عصير ليمون",
-    "lime juice": "عصير ليمون حامض",
-    "garlic": "ثوم",
-    "garlic powder": "بودرة ثوم",
-    "onion": "بصل",
-    "cumin": "كمون",
-    "paprika": "بابريكا",
-    "smoked paprika": "بابريكا مدخنة",
-    "mustard": "خردل",
-    "mayonnaise": "مايونيز لايت",
-    "honey": "عسل طبيعي"
+    "egg": "بيض", "eggs": "بيض", "olive oil": "زيت زيتون", "sourdough": "خبز الساوردو",
+    "pita bread (small)": "خبز بيتا صغير", "pita bread": "خبز بيتا", "toast": "توست",
+    "black olives": "زيتون أسود", "olives": "زيتون", "makdoos": "مكدوس", "labneh": "لبنة",
+    "cucumber": "خيار", "cherry tomatoes": "طماطم كرزية", "tomato": "طماطم", "tomatoes": "طماطم",
+    "chilli flakes": "رقائق فلفل حار", "chili flakes": "رقائق فلفل حار", "salt": "ملح",
+    "black pepper": "فلفل أسود", "avocado": "أفوكادو", "lettuce": "خس", "rocca": "جرجير",
+    "parsley": "بقدونس", "mint": "نعناع", "cilantro": "كزبرة", "spinach": "سبانخ",
+    "chicken breast": "صدر دجاج", "chicken": "دجاج", "chicken broth": "مرق دجاج",
+    "quinoa": "كينوا", "mix beans": "فاصولياء مشكلة", "corn": "ذرة صفراء", "bell pepper": "فلفل حلو",
+    "feta cheese": "جبنة فيتا", "halloumi": "جبنة حلوم", "parmesan": "جبن بارميزان", "cheddar": "جبن شيدر",
+    "greek yogurt": "زبادي يوناني", "yogurt": "زبادي", "milk": "حليب", "almond milk": "حليب لوز",
+    "skim milk": "حليب خالي الدسم", "oats": "شوفان", "rolled oats": "شوفان حبة كاملة",
+    "chia seeds": "بذور الشيا", "flax seeds": "بذور الكتان", "peanut butter": "زبدة فول سوداني",
+    "almond": "لوز", "almonds": "لوز", "walnut": "جوز", "walnuts": "جوز", "cashew": "كاجو",
+    "dates": "تمر", "date": "تمر", "banana": "موز", "green apple": "تفاح أخضر", "apple": "تفاح",
+    "blueberry": "توت أزرق", "blueberries": "توت أزرق", "lemon juice": "عصير ليمون",
+    "lime juice": "عصير ليمون حامض", "garlic": "ثوم", "garlic powder": "بودرة ثوم", "onion": "بصل",
+    "cumin": "كمون", "paprika": "بابريكا", "smoked paprika": "بابريكا مدخنة", "mustard": "خردل",
+    "mayonnaise": "مايونيز لايت", "honey": "عسل طبيعي", "shrimp": "روبيان", "beef": "لحم بقري"
 }
 
 UNITS_TRANSLATION_MAP = {
-    "g": "غ",
-    "gram": "غ",
-    "grams": "غ",
-    "ml": "مل",
-    "pcs": "حبة",
-    "pc": "حبة",
-    "slice": "شريحة",
-    "slices": "شرائح",
-    "tbsp": "ملعقة كبيرة",
-    "tsp": "ملعقة صغيرة",
-    "cup": "كوب"
+    "g": "غ", "gram": "غ", "grams": "غ", "ml": "مل", "pcs": "حبة", "pc": "حبة",
+    "slice": "شريحة", "slices": "شرائح", "tbsp": "ملعقة كبيرة", "tsp": "ملعقة صغيرة", "cup": "كوب"
 }
 
 def translate_ingredient(name):
     if not is_ar:
         return str(name).strip()
-    clean_key = str(name).strip().lower()
-    return INGREDIENTS_TRANSLATION_MAP.get(clean_key, str(name).strip())
+    return INGREDIENTS_TRANSLATION_MAP.get(str(name).strip().lower(), str(name).strip())
 
 def translate_unit(unit):
     if not is_ar:
         return str(unit).strip()
-    clean_u = str(unit).strip().lower()
-    return UNITS_TRANSLATION_MAP.get(clean_u, str(unit).strip())
+    return UNITS_TRANSLATION_MAP.get(str(unit).strip().lower(), str(unit).strip())
 
 # ==========================================
-# 3. NUMERIC & IMAGE HELPERS
+# 3. NUMERIC & IMAGE HELPERS (SAFE SCALAR)
 # ==========================================
 def extract_numeric(val, default=0.0):
+    if isinstance(val, (pd.Series, list)):
+        val = val[0] if len(val) > 0 else default
     if pd.isna(val):
         return default
     val_str = str(val).strip()
@@ -284,47 +242,39 @@ def extract_numeric(val, default=0.0):
     return default
 
 def resolve_image_url(img_val, category="", name_en=""):
-    # Check explicitly passed value
-    candidates = []
-    if img_val and not pd.isna(img_val):
-        v = str(img_val).strip()
-        if v and v.lower() not in ["none", "nan", "#n/a", ""]:
-            candidates.append(v)
+    # Extract scalar string if a Series is passed
+    if isinstance(img_val, (pd.Series, list)):
+        if len(img_val) > 0:
+            val_candidate = img_val[0]
+            val = "" if pd.isna(val_candidate) else str(val_candidate).strip()
+        else:
+            val = ""
+    elif pd.isna(img_val) or img_val is None:
+        val = ""
+    else:
+        val = str(img_val).strip()
 
-    # Add name-based image candidates
-    if name_en:
-        clean_base = str(name_en).strip()
-        candidates.extend([
-            f"{clean_base}.png",
-            f"{clean_base}.jpg",
-            f"images/{clean_base}.png",
-            f"images/{clean_base}.jpg",
-            f"images/{category}/{clean_base}.png" if category else "",
-            f"images/{category}/{clean_base}.jpg" if category else "",
-        ])
-
-    for val in candidates:
-        if not val:
-            continue
-
-        # Direct Web URL
-        if val.startswith("http://") or val.startswith("https://"):
-            if "drive.google.com" in val:
-                file_id = re.search(r"/(?:d|folders|file/d)/([a-zA-Z0-9_-]+)", val) or re.search(r"id=([a-zA-Z0-9_-]+)", val)
-                if file_id:
-                    return f"https://drive.google.com/thumbnail?id={file_id.group(1)}&sz=w1000"
+    if val and val.lower() not in ["none", "nan", "#n/a", ""]:
+        # Google Drive Link
+        if "drive.google.com" in val:
+            file_id = re.search(r"/(?:d|folders|file/d)/([a-zA-Z0-9_-]+)", val) or re.search(r"id=([a-zA-Z0-9_-]+)", val)
+            if file_id:
+                return f"https://drive.google.com/thumbnail?id={file_id.group(1)}&sz=w1000"
             return val
-
-        # Local files in repo
+        if val.startswith("http://") or val.startswith("https://"):
+            return val
         if os.path.exists(val):
             return val
-        if os.path.exists(os.path.join("images", val)):
-            return os.path.join("images", val)
 
-    # Return GitHub raw fallback for the first valid candidate
-    if candidates:
-        first_c = candidates[0].replace(" ", "%20")
-        return f"https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/{first_c}"
+    # Fallback by clean name
+    if name_en:
+        clean_base = str(name_en).strip()
+        for ext in [".png", ".jpg"]:
+            cand = f"{clean_base}{ext}"
+            if os.path.exists(cand):
+                return cand
+            if os.path.exists(os.path.join("images", cand)):
+                return os.path.join("images", cand)
 
     return ""
 
@@ -382,9 +332,15 @@ if "grocery_checked" not in st.session_state:
 if "recipe_steps_checked" not in st.session_state:
     st.session_state.recipe_steps_checked = {}
 
+if "favorite_recipes" not in st.session_state:
+    st.session_state.favorite_recipes = set()
+
+if "logged_meals" not in st.session_state:
+    st.session_state.logged_meals = []
+
 if "margot_history" not in st.session_state:
     st.session_state.margot_history = [
-        {"role": "margot", "content": "مرحباً بك! أنا مارغو، شيف Munch Me ومساعدتك التغذوية الذكية. كيف يمكنني مساعدتك اليوم؟" if is_ar else "👋 Marhaban! I am Margot, your personal culinary nutritionist. How can I assist you with meal prep, custom substitutions, or recipes today?"}
+        {"role": "margot", "content": "مرحباً بك! أنا مارغو، أخصائية التغذية وشيف Munch Me. كيف أساعدك اليوم في تخطيط وجباتك، بدائل المكونات، أو حسابات الماكروز الدقيقة؟" if is_ar else "👋 Marhaban! I am Margot, your personal culinary nutritionist. How can I assist you with meal prep, custom substitutions, or recipes today?"}
     ]
 
 if "active_modal_recipe" not in st.session_state:
@@ -450,7 +406,9 @@ if not recipe_details_df.empty:
     col_map = {}
     for c in recipe_details_df.columns:
         cl = c.lower()
-        if "greek" in cl or "recipe" in cl or "menu" in cl:
+        if "direct_image_url" in cl:
+            col_map[c] = "Image URL"
+        elif "greek" in cl or "recipe" in cl or "menu" in cl:
             col_map[c] = "Recipe Name"
         elif "ingredient" in cl:
             col_map[c] = "Ingredients"
@@ -460,7 +418,7 @@ if not recipe_details_df.empty:
             col_map[c] = "Unit"
         elif "method" in cl:
             col_map[c] = "Method"
-        elif "image" in cl:
+        elif "image" in cl and "Image URL" not in col_map.values():
             col_map[c] = "Image URL"
     recipe_details_df.rename(columns=col_map, inplace=True)
     if "Recipe Name" in recipe_details_df.columns:
@@ -474,6 +432,14 @@ if not recipes_summary_df.empty and "Total Calories" in recipes_summary_df.colum
     recipes_clean_df = recipes_clean_df.dropna(subset=["Total Calories"])
 else:
     recipes_clean_df = pd.DataFrame()
+
+# Pre-index images by recipe name for O(1) retrieval
+recipe_img_lookup = {}
+if not recipe_details_df.empty and "Image URL" in recipe_details_df.columns:
+    for _, row in recipe_details_df.dropna(subset=["Image URL"]).iterrows():
+        rname = str(row.get("Recipe Name", "")).strip().lower()
+        if rname and rname not in recipe_img_lookup:
+            recipe_img_lookup[rname] = str(row["Image URL"]).strip()
 
 # ==========================================
 # 7. ENHANCED RECIPE MODAL (IMAGE, DONUT & STEPS)
@@ -509,8 +475,12 @@ if hasattr(st, "dialog"):
             matched_items = pd.DataFrame()
             if not recipe_details_df.empty:
                 matched_items = recipe_details_df[
-                    recipe_details_df.astype(str).apply(lambda row: clean_match_name.lower() in row.to_string().lower(), axis=1)
+                    recipe_details_df["Recipe Name"].astype(str).str.lower().str.strip() == clean_match_name.lower().strip()
                 ]
+                if matched_items.empty:
+                    matched_items = recipe_details_df[
+                        recipe_details_df.astype(str).apply(lambda row: clean_match_name.lower() in row.to_string().lower(), axis=1)
+                    ]
 
             col_ing, col_steps = st.columns([1, 1.2], gap="medium")
 
@@ -519,7 +489,7 @@ if hasattr(st, "dialog"):
                 if not matched_items.empty and "Ingredients" in matched_items.columns:
                     for _, irow in matched_items.iterrows():
                         raw_ing_n = str(irow.get("Ingredients", "")).strip()
-                        if raw_ing_n and raw_ing_n.lower() != "nan" and raw_ing_n.lower() != "ingredients":
+                        if raw_ing_n and raw_ing_n.lower() not in ["nan", "ingredients"]:
                             q_val = extract_numeric(irow.get("Qtty.", 1))
                             raw_u = str(irow.get("Unit", "g")).strip()
                             if not raw_u or raw_u.lower() == "nan":
@@ -546,7 +516,7 @@ if hasattr(st, "dialog"):
                     if method_vals:
                         raw_method = str(method_vals[0]).strip()
 
-                if raw_method and raw_method.lower() != "none" and raw_method.lower() != "nan":
+                if raw_method and raw_method.lower() not in ["none", "nan"]:
                     steps = [s.strip() for s in re.split(r'\n+|\d+\.\s*', raw_method) if len(s.strip()) > 3]
                     if not steps:
                         steps = [raw_method]
@@ -855,21 +825,25 @@ elif st.session_state.page == 2:
 
     st.markdown("<hr style='border:0; border-top:1px solid #E2E8F0; margin: 25px 0;'>", unsafe_allow_html=True)
 
-    tab_titles = ["🍽️ دليل وقائمة الوجبات", "📝 قائمة التسوق الذكية", "👩‍🍳 الشيف مارغو AI"] if is_ar else ["🍽️ Recipes & Meal Catalog", "📝 Grocery Shopping Note", "👩‍🍳 Margot AI Chef Assistant"]
-    tab_meals, tab_grocery, tab_margot = st.tabs(tab_titles)
+    tab_titles = ["🍽️ دليل وقائمة الوجبات", "📝 قائمة التسوق الذكية", "📋 ملخص الخطة والوجبات", "👩‍🍳 الشيف مارغو AI"] if is_ar else ["🍽️ Recipes & Meal Catalog", "📝 Grocery Shopping Note", "📋 Meal Plan Summary", "👩‍🍳 Margot AI Chef Assistant"]
+    tab_meals, tab_grocery, tab_summary, tab_margot = st.tabs(tab_titles)
 
     # ==========================================
-    # TAB 1: MEAL CATALOG & SEARCH
+    # TAB 1: MEAL CATALOG, SEARCH & FAVORITES
     # ==========================================
     with tab_meals:
         if recipes_clean_df.empty:
             st.warning("Connecting to Google Sheets...")
         else:
-            search_query = st.text_input(
-                "🔍 بحث عن وجبة بالاسم (عربي أو إنجليزي)..." if is_ar else "🔍 Search recipe by name (English or Arabic)...",
-                value="",
-                placeholder="e.g. Chicken Wrap, دجاج سيزر, Salad..."
-            )
+            s_col1, s_col2 = st.columns([3.5, 1])
+            with s_col1:
+                search_query = st.text_input(
+                    "🔍 بحث عن وجبة بالاسم (عربي أو إنجليزي)..." if is_ar else "🔍 Search recipe by name (English or Arabic)...",
+                    value="",
+                    placeholder="e.g. Chicken Wrap, دجاج سيزر, Salad..."
+                )
+            with s_col2:
+                show_favs_only = st.checkbox("❤️ المفضلة فقط" if is_ar else "❤️ Favorites Only", value=False)
 
             st.markdown(f"#### {'اختر نوع الوجبة' if is_ar else 'Select Meal Slot'}")
             slot_options = list(MEAL_STRUCTURE.keys())
@@ -906,6 +880,9 @@ elif st.session_state.page == 2:
                     filtered_df["Menu Item Ar"].astype(str).str.lower().str.contains(q, na=False)
                 ]
 
+            if show_favs_only:
+                filtered_df = filtered_df[filtered_df["Menu Item"].isin(st.session_state.favorite_recipes)]
+
             if filtered_df.empty:
                 st.info("لا توجد وجبات تطابق البحث حالياً." if is_ar else "No recipes found matching your selection.")
             else:
@@ -918,11 +895,10 @@ elif st.session_state.page == 2:
                         name_en = str(recipe.get("Menu Item", f"Recipe #{idx+1}")).strip()
                         name_ar = str(recipe.get("Menu Item Ar", "")).strip()
 
-                        raw_img = recipe.get("Image", recipe.get("image", recipe.get("Image URL", "")))
-                        if not raw_img and not recipe_details_df.empty and "Image URL" in recipe_details_df.columns:
-                            m_match = recipe_details_df[recipe_details_df["Recipe Name"].astype(str).str.lower().str.strip() == name_en.lower()]
-                            if not m_match.empty:
-                                raw_img = m_match["Image URL"].dropna().iloc[0] if not m_match["Image URL"].dropna().empty else ""
+                        # Image resolution using lookup dictionary with fallbacks
+                        raw_img = recipe_img_lookup.get(name_en.lower(), "")
+                        if not raw_img:
+                            raw_img = recipe.get("Image", recipe.get("Image URL", ""))
                         
                         resolved_img = resolve_image_url(raw_img, category=raw_cat, name_en=name_en)
 
@@ -944,6 +920,9 @@ elif st.session_state.page == 2:
                             )
                         else:
                             header_media = '<div style="display:flex; width:100%; height:100%; align-items:center; justify-content:center; font-size:3.5rem; background:#F1F5F9;">🥗</div>'
+
+                        is_fav = name_en in st.session_state.favorite_recipes
+                        fav_icon = "❤️" if is_fav else "🤍"
 
                         st.markdown(f"""
                         <div class="recipe-card">
@@ -970,9 +949,9 @@ elif st.session_state.page == 2:
                         </div>
                         """, unsafe_allow_html=True)
 
-                        c_action1, c_action2 = st.columns(2)
+                        c_action1, c_action2, c_fav = st.columns([1.8, 1.8, 0.8])
                         with c_action1:
-                            guide_btn_label = "طريقة التحضير" if is_ar else "View Guide"
+                            guide_btn_label = "الوصفة" if is_ar else "View Guide"
                             if st.button(guide_btn_label, key=f"guide_{meal_slot}_{idx}", use_container_width=True):
                                 current_selected = {
                                     "name": f"{name_en} (Side Salad ½)" if is_side_salad else name_en,
@@ -988,13 +967,24 @@ elif st.session_state.page == 2:
                                 display_recipe_dialog(current_selected)
 
                         with c_action2:
-                            add_label = ("+ تناول اليوم" if "1" in st.session_state.plan_mode else "+ أضف للأسبوع") if is_ar else ("+ Eat Today" if "Today" in st.session_state.plan_mode else "+ Add to Week")
+                            add_label = ("+ أضف" if "1" in st.session_state.plan_mode else "+ أسبوع") if is_ar else ("+ Add" if "Today" in st.session_state.plan_mode else "+ Week")
                             if st.button(add_label, key=f"eat_{meal_slot}_{idx}", use_container_width=True):
                                 st.session_state.user["consumed_calories"] += cals
                                 st.session_state.user["consumed_protein"] += pro
                                 st.session_state.user["consumed_carbs"] += carb
                                 st.session_state.user["consumed_fat"] += fat
 
+                                # Record in logged meals
+                                st.session_state.logged_meals.append({
+                                    "Slot": meal_slot,
+                                    "Meal": name_ar if is_ar else name_en,
+                                    "Calories": round(cals),
+                                    "Protein (g)": round(pro, 1),
+                                    "Carbs (g)": round(carb, 1),
+                                    "Fat (g)": round(fat, 1)
+                                })
+
+                                # Aggregate grocery ingredients
                                 if not recipe_details_df.empty and "Ingredients" in recipe_details_df.columns:
                                     matched_rows = recipe_details_df[
                                         recipe_details_df["Recipe Name"].astype(str).str.lower().str.strip() == name_en.lower()
@@ -1006,7 +996,7 @@ elif st.session_state.page == 2:
 
                                     for _, ing_row in matched_rows.iterrows():
                                         raw_ing_n = str(ing_row.get("Ingredients", "")).strip()
-                                        if raw_ing_n and raw_ing_n.lower() != "nan" and raw_ing_n.lower() != "ingredients":
+                                        if raw_ing_n and raw_ing_n.lower() not in ["nan", "ingredients"]:
                                             raw_q = extract_numeric(ing_row.get("Qtty.", 100)) * portion_multiplier
                                             raw_u = str(ing_row.get("Unit", "g")).strip()
                                             if not raw_u or raw_u.lower() == "nan":
@@ -1024,17 +1014,27 @@ elif st.session_state.page == 2:
                                                 }
                                 st.rerun()
 
+                        with c_fav:
+                            if st.button(fav_icon, key=f"fav_{meal_slot}_{idx}", use_container_width=True):
+                                if is_fav:
+                                    st.session_state.favorite_recipes.remove(name_en)
+                                else:
+                                    st.session_state.favorite_recipes.add(name_en)
+                                st.rerun()
+
     # ==========================================
-    # TAB 2: NOTE-STYLE GROCERY LIST WITH CHECKBOXES
+    # TAB 2: NOTE-STYLE GROCERY LIST & EXPORTERS
     # ==========================================
     with tab_grocery:
         st.markdown(f"### {'📝 مفكرة التسوق الذكية للمكونات' if is_ar else '📝 Smart Grocery Notepad'} ({st.session_state.plan_mode})")
-        st.caption("قائمة تفاعلية بالمكونات مقسمة حسب أقسام السوبرماركت مع خاصية الشطب عند الشراء أو التوفر." if is_ar else "Interactive grocery checklist grouped by supermarket aisle with live check-off features.")
+        st.caption("قائمة تفاعلية بالمكونات مقسمة حسب أقسام السوبرماركت مع خاصية التصدير والشطب." if is_ar else "Interactive grocery checklist grouped by supermarket aisle with WhatsApp and download options.")
 
         if not st.session_state.raw_grocery_items:
-            st.info("مفكرة التسوق فارغة! اضغط على '+ تناول اليوم' أو '+ أضف للأسبوع' في أي وصفة لإضافة مقاديرها تلقائياً." if is_ar else "Your notepad is empty! Click '+ Eat Today' or '+ Add to Week' on any recipe card to build your ingredient list.")
+            st.info("مفكرة التسوق فارغة! اضغط على '+ أضف' في أي وجبة لحساب مقاديرها تلقائياً." if is_ar else "Your notepad is empty! Click '+ Add' on any recipe card to build your ingredient list.")
         else:
             items_by_cat = {}
+            whatsapp_text_lines = [f"*🍏 Munch Me - {'قائمة المشتريات' if is_ar else 'Grocery Shopping List'} ({st.session_state.plan_mode})*\n"]
+
             for raw_ing_name, data in st.session_state.raw_grocery_items.items():
                 cat = data.get("category", "بهارات وزيوت ومستلزمات" if is_ar else "🧂 Pantry, Oils, Spices & Dressings")
                 if cat not in items_by_cat:
@@ -1054,6 +1054,7 @@ elif st.session_state.page == 2:
                 })
 
             for section, items in sorted(items_by_cat.items()):
+                whatsapp_text_lines.append(f"\n*{section}*")
                 st.markdown(f"""
                 <div class="note-card">
                     <div class="note-header">
@@ -1074,26 +1075,77 @@ elif st.session_state.page == 2:
                     with c_txt:
                         if is_checked:
                             st.markdown(f"<span style='text-decoration: line-through; color: #94A3B8; font-weight:500;'>{item['name']} — <b>{item['amount']}</b> ✅ ({'متوفر / تم الشراء' if is_ar else 'Bought / Available'})</span>", unsafe_allow_html=True)
+                            whatsapp_text_lines.append(f"~- {item['name']} ({item['amount']})~ ✅")
                         else:
                             st.markdown(f"<span style='color: #1E293B; font-weight:600;'>{item['name']}</span> — <span style='color:#059669; font-weight:700;'>{item['amount']}</span>", unsafe_allow_html=True)
+                            whatsapp_text_lines.append(f"- {item['name']}: {item['amount']}")
 
                 st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
-            if st.button("مسح قائمة التسوق بالكامل" if is_ar else "Clear Shopping Notepad", type="secondary"):
-                st.session_state.raw_grocery_items = {}
-                st.session_state.grocery_checked = {}
-                st.session_state.user["consumed_calories"] = 0.0
-                st.session_state.user["consumed_protein"] = 0.0
-                st.session_state.user["consumed_carbs"] = 0.0
-                st.session_state.user["consumed_fat"] = 0.0
-                st.rerun()
+            # Export tools: WhatsApp, Download TXT, Clear
+            st.markdown("<hr style='border:0; border-top:1px solid #E2E8F0; margin: 20px 0;'>", unsafe_allow_html=True)
+            e_col1, e_col2, e_col3 = st.columns([1.5, 1.5, 1])
+
+            whatsapp_message = urllib.parse.quote("\n".join(whatsapp_text_lines))
+            whatsapp_url = f"https://api.whatsapp.com/send?text={whatsapp_message}"
+
+            with e_col1:
+                st.markdown(
+                    f'<a href="{whatsapp_url}" target="_blank" style="text-decoration:none;">'
+                    f'<button style="width:100%; background:#25D366; color:white; border:none; padding:10px 18px; border-radius:12px; font-weight:700; cursor:pointer;">'
+                    f'📲 {"إرسال عبر واتساب" if is_ar else "Share via WhatsApp"}'
+                    f'</button></a>',
+                    unsafe_allow_html=True
+                )
+
+            with e_col2:
+                txt_export = "\n".join(whatsapp_text_lines).replace("*", "").replace("~", "")
+                st.download_button(
+                    label="📥 تحميل المفكرة (TXT)" if is_ar else "📥 Download Notepad (.txt)",
+                    data=txt_export,
+                    file_name=f"munch_me_groceries_{datetime.date.today()}.txt",
+                    mime="text/plain",
+                    use_container_width=True
+                )
+
+            with e_col3:
+                if st.button("مسح القائمة" if is_ar else "Clear List", type="secondary", use_container_width=True):
+                    st.session_state.raw_grocery_items = {}
+                    st.session_state.grocery_checked = {}
+                    st.session_state.logged_meals = []
+                    st.session_state.user["consumed_calories"] = 0.0
+                    st.session_state.user["consumed_protein"] = 0.0
+                    st.session_state.user["consumed_carbs"] = 0.0
+                    st.session_state.user["consumed_fat"] = 0.0
+                    st.rerun()
 
     # ==========================================
-    # TAB 3: MARGOT AI CHEF ASSISTANT
+    # TAB 3: MEAL PLAN SUMMARY & EXPORTER
+    # ==========================================
+    with tab_summary:
+        st.markdown(f"### {'📋 ملخص جدول الوجبات والماكروز' if is_ar else '📋 Meal Plan & Macro Summary'}")
+        st.caption("نظرة تفصيلية على جميع الوجبات المجدولة، وحسابات الطاقة التراكمية." if is_ar else "Consolidated breakdown of logged meals, target macro compliance, and exports.")
+
+        if not st.session_state.logged_meals:
+            st.info("لم يتم تسجيل أي وجبات بعد. أضف وجباتك من تبويب 'دليل الوجبات' لتظهر هنا." if is_ar else "No meals logged yet. Click '+ Add' on any recipe in the catalog to populate your summary.")
+        else:
+            summary_df = pd.DataFrame(st.session_state.logged_meals)
+            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+            csv_data = summary_df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 تصدير الجدول كـ Excel / CSV" if is_ar else "📥 Export Plan as CSV",
+                data=csv_data,
+                file_name=f"munch_me_plan_{datetime.date.today()}.csv",
+                mime="text/csv"
+            )
+
+    # ==========================================
+    # TAB 4: MARGOT CLINICAL CHEF ASSISTANT
     # ==========================================
     with tab_margot:
-        st.markdown(f"### {'👩‍🍳 الشيف مارغو | أخصائية الطهي والتغذية' if is_ar else '👩‍🍳 Margot | Culinary Nutritionist & AI Chef'}")
-        st.caption("اسأل مارغو عن بدائل المكونات، أسرار الطهي الصحي، أو تعديل الوصفات حسب هدفك." if is_ar else "Ask Margot about ingredient swaps, culinary techniques, prep steps, or diet tailoring.")
+        st.markdown(f"### {'👩‍🍳 الشيف مارغو | أخصائية الطهي والتغذية العلاجية' if is_ar else '👩‍🍳 Margot | Culinary Nutritionist & AI Chef'}")
+        st.caption("اسأل مارغو عن بدائل المكونات، أسرار الطهي الصحي، وضبط سكر الدم والماكروز." if is_ar else "Ask Margot about ingredient swaps, culinary techniques, prep steps, or diet tailoring.")
 
         chat_container = st.container()
         with chat_container:
@@ -1120,14 +1172,19 @@ elif st.session_state.page == 2:
                     client = genai.Client(api_key=api_key)
                     lang_instruction = "Respond fluently in clear Modern Standard Arabic (العربية الفصحى)." if is_ar else "Respond in English."
                     sys_prompt = f"""
-                    You are Margot, the personal AI Chef Assistant for Munch Me. 
-                    You specialize in clinical nutrition, wholesome Middle Eastern and international cooking, and precision ingredient scaling.
+                    You are Margot, the personal Clinical AI Chef Assistant for Munch Me.
+                    You possess deep expertise in clinical dietetics, food science, 1g precision macro scaling, and wholesome Middle Eastern and international cooking.
                     User Profile:
                     - Goal: {st.session_state.user['goal']}
                     - Diet Type: {st.session_state.user['diet_type']}
                     - Target Calories: {st.session_state.user['daily_calories']} kcal
-                    Language directive: {lang_instruction}
-                    Keep answers warm, concise, culinary-focused, and practical.
+                    - Protein Target: {st.session_state.user['target_protein']}g | Carbs: {st.session_state.user['target_carbs']}g | Fat: {st.session_state.user['target_fat']}g
+                    
+                    Guidelines:
+                    1. When asked for substitutions, maintain equivalent macros and calorie balance (e.g. swapping lean poultry for plant-based proteins like edamame or firm tofu).
+                    2. Address glycemic balance, satiety index, and wholesome food preparation without excess saturated fats.
+                    3. Language directive: {lang_instruction}
+                    4. Keep answers warm, practical, evidence-based, and chef-inspired.
                     """
                     response = client.models.generate_content(
                         model="gemini-2.5-flash",
