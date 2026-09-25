@@ -6,7 +6,7 @@ import re
 from google import genai
 
 # ==========================================
-# 1. PAGE SETUP & MODERN CSS
+# 1. PAGE SETUP & MODERN STYLING
 # ==========================================
 st.set_page_config(
     page_title="Munch Me | Smart Nutrition & Chef Assistant",
@@ -15,34 +15,44 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-st.markdown("""
+# Language state initialization
+if "lang" not in st.session_state:
+    st.session_state.lang = "English"
+
+is_ar = (st.session_state.lang == "العربية")
+text_dir = "rtl" if is_ar else "ltr"
+font_align = "right" if is_ar else "left"
+
+st.markdown(f"""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap');
     
-    html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
+    html, body, [class*="css"] {{
+        font-family: {'"Tajawal", sans-serif' if is_ar else '"Plus Jakarta Sans", sans-serif'} !important;
         background-color: #F8FAFC;
         color: #1E293B;
-    }
+        direction: {text_dir};
+        text-align: {font_align};
+    }}
 
-    .stButton > button {
+    .stButton > button {{
         border-radius: 12px !important;
         font-weight: 700 !important;
         border: none !important;
         transition: all 0.2s ease-in-out !important;
         padding: 0.55rem 1.25rem !important;
-    }
+    }}
 
-    .metric-card {
+    .metric-card {{
         background: white;
         border-radius: 16px;
         padding: 1.25rem;
         box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.05);
         border: 1px solid #F1F5F9;
         text-align: center;
-    }
+    }}
 
-    .recipe-card {
+    .recipe-card {{
         background: white;
         border-radius: 20px;
         border: 1.5px solid #E2E8F0;
@@ -51,80 +61,89 @@ st.markdown("""
         display: flex;
         flex-direction: column;
         height: 100%;
-    }
-    .recipe-card-header {
+    }}
+    .recipe-card-header {{
         position: relative;
-        height: 160px;
+        height: 150px;
         background-color: #F1F5F9;
         display: flex;
         align-items: center;
         justify-content: center;
-    }
-    .recipe-card-header img {
+    }}
+    .recipe-card-header img {{
         width: 100%;
         height: 100%;
         object-fit: cover;
-    }
-    .badge-count {
+    }}
+    .badge-count {{
         position: absolute;
         top: 12px;
-        right: 12px;
+        {'left: 12px;' if is_ar else 'right: 12px;'}
         background: rgba(30, 41, 59, 0.85);
         color: white;
         padding: 4px 10px;
         border-radius: 20px;
         font-size: 0.75rem;
         font-weight: 700;
-    }
-    .recipe-card-body {
+    }}
+    .recipe-card-body {{
         padding: 1.25rem;
         display: flex;
         flex-direction: column;
         flex-grow: 1;
-    }
-    .macro-pill {
+    }}
+    .macro-pill {{
         border-radius: 10px;
         padding: 6px 10px;
         font-size: 0.8rem;
         font-weight: 700;
         text-align: center;
-    }
-    .macro-p { background-color: #ECFDF5; color: #059669; }
-    .macro-c { background-color: #FEF9C3; color: #CA8A04; }
-    .macro-f { background-color: #FFE4E6; color: #E11D48; }
+    }}
+    .macro-p {{ background-color: #ECFDF5; color: #059669; }}
+    .macro-c {{ background-color: #FEF9C3; color: #CA8A04; }}
+    .macro-f {{ background-color: #FFE4E6; color: #E11D48; }}
 
-    .chat-bubble {
+    /* Note-Style Grocery List Card */
+    .note-card {{
+        background: #FFFDF9;
+        border: 1.5px solid #FDE68A;
+        border-left: 6px solid #F59E0B;
+        border-radius: 14px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+    }}
+    .note-header {{
+        font-weight: 800;
+        font-size: 1.05rem;
+        color: #92400E;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }}
+
+    .chat-bubble {{
         padding: 1rem 1.25rem;
         border-radius: 14px;
         margin-bottom: 0.8rem;
         line-height: 1.5;
-    }
-    .chat-user {
+    }}
+    .chat-user {{
         background: #E2E8F0;
         color: #1E293B;
-        text-align: right;
-    }
-    .chat-margot {
+        text-align: {'left' if is_ar else 'right'};
+    }}
+    .chat-margot {{
         background: #F0FDF4;
         border: 1px solid #BBF7D0;
         color: #166534;
-    }
-
-    .grocery-section-header {
-        background: #F1F5F9;
-        padding: 8px 14px;
-        border-radius: 10px;
-        font-weight: 700;
-        font-size: 1rem;
-        color: #1E293B;
-        margin-top: 15px;
-        margin-bottom: 8px;
-    }
+    }}
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. NUMERIC DATA CLEANER HELPER
+# 2. NUMERIC & DATA CLEANING HELPERS
 # ==========================================
 def extract_numeric(val, default=0.0):
     if pd.isna(val):
@@ -138,28 +157,25 @@ def extract_numeric(val, default=0.0):
             return default
     return default
 
-# ==========================================
-# 3. SUPERMARKET AISLE CLASSIFIER
-# ==========================================
 def categorize_ingredient(name):
     n = str(name).lower()
     if any(k in n for k in ["lettuce", "rocca", "cucumber", "tomato", "onion", "garlic", "spinach", "cabbage", "pepper", "broccoli", "carrot", "herb", "parsley", "mint", "cilantro", "zucchini", "mushroom", "potato", "corn"]):
-        return "🥬 Vegetables & Greens"
+        return ("خضار وأعشاب طازجة", "🥬 Vegetables & Greens") if is_ar else ("🥬 Vegetables & Greens", "خضار وأعشاب طازجة")
     elif any(k in n for k in ["apple", "banana", "berry", "berries", "strawberry", "lemon", "lime", "date", "orange", "avocado", "mango", "pomegranate"]):
-        return "🍎 Fresh Fruits"
+        return ("فواكه طازجة", "🍎 Fresh Fruits") if is_ar else ("🍎 Fresh Fruits", "فواكه طازجة")
     elif any(k in n for k in ["chicken", "beef", "meat", "turkey", "fish", "salmon", "tuna", "shrimp"]):
-        return "🥩 Meat, Poultry & Seafood"
+        return ("لحوم ودواجن وأسماك", "🥩 Meat, Poultry & Seafood") if is_ar else ("🥩 Meat, Poultry & Seafood", "لحوم ودواجن وأسماك")
     elif any(k in n for k in ["milk", "yogurt", "cheese", "halloumi", "labneh", "butter", "egg", "cream"]):
-        return "🥛 Dairy, Milk & Eggs"
+        return ("ألبان وأجبان وبيض", "🥛 Dairy, Milk & Eggs") if is_ar else ("🥛 Dairy, Milk & Eggs", "ألبان وأجبان وبيض")
     elif any(k in n for k in ["rice", "bread", "toast", "oat", "quinoa", "freekeh", "pasta", "fettuccine", "flour", "tortilla"]):
-        return "🌾 Grains, Pasta & Bakery"
+        return ("حبوب ونشويات ومخبوزات", "🌾 Grains, Pasta & Bakery") if is_ar else ("🌾 Grains, Pasta & Bakery", "حبوب ونشويات ومخبوزات")
     elif any(k in n for k in ["almond", "walnut", "cashew", "peanut", "seed", "chia"]):
-        return "🥜 Nuts & Seeds"
+        return ("مكسرات وبذور", "🥜 Nuts & Seeds") if is_ar else ("🥜 Nuts & Seeds", "مكسرات وبذور")
     else:
-        return "🧂 Pantry, Oils, Spices & Dressings"
+        return ("بهارات وزيوت ومستلزمات", "🧂 Pantry, Oils, Spices & Dressings") if is_ar else ("🧂 Pantry, Oils, Spices & Dressings", "بهارات وزيوت ومستلزمات")
 
 # ==========================================
-# 4. SESSION STATE MANAGEMENT
+# 3. SESSION STATE MANAGEMENT
 # ==========================================
 if "page" not in st.session_state:
     st.session_state.page = 1
@@ -167,13 +183,15 @@ if "page" not in st.session_state:
 if "plan_mode" not in st.session_state:
     st.session_state.plan_mode = "Today (1 Day)"
 
-# Stores: { "ingredient_name": { "quantity": float, "unit": str, "category": str } }
 if "raw_grocery_items" not in st.session_state:
     st.session_state.raw_grocery_items = {}
 
+if "grocery_checked" not in st.session_state:
+    st.session_state.grocery_checked = {}
+
 if "margot_history" not in st.session_state:
     st.session_state.margot_history = [
-        {"role": "margot", "content": "👋 Marhaban! I am Margot, your personal culinary nutritionist. How can I assist you with meal prep, custom substitutions, or recipes today?"}
+        {"role": "margot", "content": "مرحباً بك! أنا مارغو، شيف Munch Me ومساعدتك التغذوية الذكية. كيف يمكنني مساعدتك اليوم؟" if is_ar else "👋 Marhaban! I am Margot, your personal culinary nutritionist. How can I assist you with meal prep, custom substitutions, or recipes today?"}
     ]
 
 if "user" not in st.session_state:
@@ -199,39 +217,24 @@ if "user" not in st.session_state:
     }
 
 # ==========================================
-# 5. MEAL SLOTS & CATEGORY HIERARCHY
+# 4. MEAL SLOTS & CATEGORIES HIERARCHY
 # ==========================================
 MEAL_STRUCTURE = {
-    "Breakfast": [
-        "Egg Breakfast",
-        "Breakfast Smoothies",
-        "Savory Breakfast",
-        "Sweet Breakfast"
-    ],
-    "Lunch": [
-        "Chicken Meals",
-        "Fish Meals",
-        "Meat Meals",
-        "Salads",
-        "Vegetarian Meals"
-    ],
-    "Dinner": [
-        "Chicken Meals",
-        "Fish Meals",
-        "Meat Meals",
-        "Salads",
-        "Vegetarian Meals"
-    ],
-    "Snacks": [
-        "Side Salads",
-        "Drinks",
-        "Savory Snacks",
-        "Sweet Snacks"
-    ]
+    "Breakfast": ["Egg Breakfast", "Breakfast Smoothies", "Savory Breakfast", "Sweet Breakfast"],
+    "Lunch": ["Chicken Meals", "Fish Meals", "Meat Meals", "Salads", "Vegetarian Meals"],
+    "Dinner": ["Chicken Meals", "Fish Meals", "Meat Meals", "Salads", "Vegetarian Meals"],
+    "Snacks": ["Side Salads", "Drinks", "Savory Snacks", "Sweet Snacks"]
+}
+
+MEAL_SLOTS_AR = {
+    "Breakfast": "الفطور",
+    "Lunch": "الغداء",
+    "Dinner": "العشاء",
+    "Snacks": "وجبات خفيفة (سناك)"
 }
 
 # ==========================================
-# 6. GOOGLE SHEETS DATA LOADER
+# 5. GOOGLE SHEETS DATA LOADER
 # ==========================================
 SHEET_ID = "1LQsOAfiVeFzsukc1FMfGtmJgx1IcOYxBbPy_PGuIXKw"
 
@@ -245,13 +248,9 @@ def load_sheet_by_gid(gid):
     except Exception:
         return pd.DataFrame()
 
-# Sheet 1: Items Menu (gid=0)
 recipes_summary_df = load_sheet_by_gid("0")
-
-# Sheet 2: Calories Data (Detailed ingredients and recipes) (gid=45255346)
 recipe_details_df = load_sheet_by_gid("45255346")
 
-# Clean recipe details columns if present
 if not recipe_details_df.empty:
     col_map = {}
     for c in recipe_details_df.columns:
@@ -265,11 +264,9 @@ if not recipe_details_df.empty:
         elif "unit" in cl:
             col_map[c] = "Unit"
     recipe_details_df.rename(columns=col_map, inplace=True)
-    # Forward fill recipe names for grouped rows
     if "Recipe Name" in recipe_details_df.columns:
         recipe_details_df["Recipe Name"] = recipe_details_df["Recipe Name"].ffill()
 
-# Filter out uncompleted / #N/A rows from Items Menu
 if not recipes_summary_df.empty and "Total Calories" in recipes_summary_df.columns:
     recipes_clean_df = recipes_summary_df.dropna(subset=["Menu Item", "Total Calories"]).copy()
     for col in ["Total Calories", "Total Protein", "Total Carbs", "Total Fat"]:
@@ -280,18 +277,38 @@ else:
     recipes_clean_df = pd.DataFrame()
 
 # ==========================================
-# 7. BRAND HEADER & LOGO
+# 6. HEADER, LOGO & LANGUAGE SWITCHER
 # ==========================================
-col_logo, col_title = st.columns([1, 6])
-with col_logo:
-    if os.path.exists("logo.png"):
-        st.image("logo.png", width=90)
-    else:
-        st.markdown("<h1 style='color:#10B981; margin:0;'>🍏</h1>", unsafe_allow_html=True)
+h_col1, h_col2, h_col3 = st.columns([1, 6, 2])
 
-with col_title:
-    st.markdown("<h2 style='margin-bottom:0; font-weight:800; color:#0F172A;'>Munch Me</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#64748B; margin-top:0; font-size:0.95rem;'>Smart Nutrition & Chef Assistant</p>", unsafe_allow_html=True)
+with h_col1:
+    # Guaranteed Logo rendering (local file with GitHub raw fallback)
+    logo_path = "logo.png"
+    github_logo_url = "https://raw.githubusercontent.com/mevenj-hub/MunchMe/main/logo.png"
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=88)
+    else:
+        st.image(github_logo_url, width=88)
+
+with h_col2:
+    if is_ar:
+        st.markdown("<h2 style='margin-bottom:0; font-weight:800; color:#0F172A;'>مانش مي | Munch Me</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#64748B; margin-top:0; font-size:0.95rem;'>محرك التغذية الدقيقة والشيف الذكي</p>", unsafe_allow_html=True)
+    else:
+        st.markdown("<h2 style='margin-bottom:0; font-weight:800; color:#0F172A;'>Munch Me</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#64748B; margin-top:0; font-size:0.95rem;'>Smart Nutrition & Chef Assistant</p>", unsafe_allow_html=True)
+
+with h_col3:
+    lang_selection = st.radio(
+        "Language / اللغة",
+        ["English", "العربية"],
+        horizontal=True,
+        index=0 if st.session_state.lang == "English" else 1,
+        label_visibility="collapsed"
+    )
+    if lang_selection != st.session_state.lang:
+        st.session_state.lang = lang_selection
+        st.rerun()
 
 st.markdown("<hr style='border:0; border-top:1px solid #E2E8F0; margin: 10px 0 25px 0;'>", unsafe_allow_html=True)
 
@@ -300,83 +317,92 @@ st.markdown("<hr style='border:0; border-top:1px solid #E2E8F0; margin: 10px 0 2
 # PAGE 1: USER ONBOARDING
 # ==============================================================================
 if st.session_state.page == 1:
-    st.markdown("### Profile & Nutrition Goals")
-    st.caption("Complete your physiological parameters to configure your meal matrix.")
+    st.markdown(f"### {'الملف الشخصي والأهداف التغذوية' if is_ar else 'Profile & Nutrition Goals'}")
+    st.caption("أدخل بياناتك الفسيولوجية لاحتساب معدل الأيض وضبط الماكروز." if is_ar else "Complete your physiological parameters to configure your meal matrix.")
 
     col1, col2 = st.columns(2, gap="large")
 
     with col1:
-        st.session_state.user["name"] = st.text_input("Full Name", value=st.session_state.user["name"], placeholder="e.g. Sarah")
+        st.session_state.user["name"] = st.text_input(
+            "الاسم الكامل" if is_ar else "Full Name",
+            value=st.session_state.user["name"],
+            placeholder="سارة الأحمد" if is_ar else "e.g. Sarah"
+        )
         
         st.session_state.user["dob"] = st.date_input(
-            "Date of Birth (Calendar Select)",
+            "تاريخ الميلاد" if is_ar else "Date of Birth",
             value=st.session_state.user["dob"],
             min_value=datetime.date(1940, 1, 1),
             max_value=datetime.date.today()
         )
 
-        st.markdown("<label style='font-size:0.9rem; font-weight:600;'>Biological Sex</label>", unsafe_allow_html=True)
-        gender_options = ["Female", "Male"]
-        curr_g = st.session_state.user.get("gender", "Female")
+        st.markdown(f"<label style='font-size:0.9rem; font-weight:600;'>{'الجنس' if is_ar else 'Biological Sex'}</label>", unsafe_allow_html=True)
+        gender_options = ["أنثى", "ذكر"] if is_ar else ["Female", "Male"]
+        curr_g = "أنثى" if (st.session_state.user.get("gender") == "Female" and is_ar) else ("ذكر" if is_ar else st.session_state.user.get("gender", "Female"))
+        
         if hasattr(st, "pills"):
             selected_gender = st.pills("Sex", options=gender_options, default=curr_g, label_visibility="collapsed")
             if selected_gender:
-                st.session_state.user["gender"] = selected_gender
-        elif hasattr(st, "segmented_control"):
-            selected_gender = st.segmented_control("Sex", options=gender_options, default=curr_g, label_visibility="collapsed")
-            if selected_gender:
-                st.session_state.user["gender"] = selected_gender
+                st.session_state.user["gender"] = "Female" if (selected_gender in ["Female", "أنثى"]) else "Male"
         else:
-            st.session_state.user["gender"] = st.radio("Sex", gender_options, index=gender_options.index(curr_g), horizontal=True, label_visibility="collapsed")
+            selected_gender = st.radio("Sex", gender_options, index=gender_options.index(curr_g), horizontal=True, label_visibility="collapsed")
+            st.session_state.user["gender"] = "Female" if (selected_gender in ["Female", "أنثى"]) else "Male"
 
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
         h_col1, h_col2 = st.columns([3, 2])
         with h_col1:
-            st.session_state.user["height_val"] = st.number_input("Height", value=float(st.session_state.user["height_val"]), step=0.5)
+            st.session_state.user["height_val"] = st.number_input("الطول" if is_ar else "Height", value=float(st.session_state.user["height_val"]), step=0.5)
         with h_col2:
-            st.session_state.user["height_unit"] = st.selectbox("Height Unit", ["cm", "inch", "foot"], index=["cm", "inch", "foot"].index(st.session_state.user["height_unit"]))
+            st.session_state.user["height_unit"] = st.selectbox("الوحدة" if is_ar else "Height Unit", ["cm", "inch", "foot"], index=["cm", "inch", "foot"].index(st.session_state.user["height_unit"]))
 
         w_col1, w_col2 = st.columns([3, 2])
         with w_col1:
-            st.session_state.user["weight_val"] = st.number_input("Weight", value=float(st.session_state.user["weight_val"]), step=0.5)
+            st.session_state.user["weight_val"] = st.number_input("الوزن" if is_ar else "Weight", value=float(st.session_state.user["weight_val"]), step=0.5)
         with w_col2:
-            st.session_state.user["weight_unit"] = st.selectbox("Weight Unit", ["kg", "pound"], index=["kg", "pound"].index(st.session_state.user["weight_unit"]))
+            st.session_state.user["weight_unit"] = st.selectbox("الوحدة" if is_ar else "Weight Unit", ["kg", "pound"], index=["kg", "pound"].index(st.session_state.user["weight_unit"]))
 
     with col2:
-        st.markdown("<label style='font-size:0.9rem; font-weight:600;'>Primary Goal</label>", unsafe_allow_html=True)
-        goal_options = ["Weight Loss", "Muscle Gain", "Maintenance", "Endurance"]
-        curr_goal = st.session_state.user.get("goal", "Weight Loss")
+        st.markdown(f"<label style='font-size:0.9rem; font-weight:600;'>{'الهدف الأساسي' if is_ar else 'Primary Goal'}</label>", unsafe_allow_html=True)
+        goal_map = {
+            "خسارة وزن": "Weight Loss", "بناء عضل": "Muscle Gain", "تثبيت الوزن": "Maintenance", "لياقة وتحمل": "Endurance"
+        } if is_ar else {
+            "Weight Loss": "Weight Loss", "Muscle Gain": "Muscle Gain", "Maintenance": "Maintenance", "Endurance": "Endurance"
+        }
+        goal_options = list(goal_map.keys())
+        curr_goal_display = [k for k, v in goal_map.items() if v == st.session_state.user.get("goal")][0]
+
         if hasattr(st, "pills"):
-            selected_goal = st.pills("Goal", options=goal_options, default=curr_goal, label_visibility="collapsed")
+            selected_goal = st.pills("Goal", options=goal_options, default=curr_goal_display, label_visibility="collapsed")
             if selected_goal:
-                st.session_state.user["goal"] = selected_goal
-        elif hasattr(st, "segmented_control"):
-            selected_goal = st.segmented_control("Goal", options=goal_options, default=curr_goal, label_visibility="collapsed")
-            if selected_goal:
-                st.session_state.user["goal"] = selected_goal
+                st.session_state.user["goal"] = goal_map[selected_goal]
         else:
-            st.session_state.user["goal"] = st.radio("Goal", goal_options, index=goal_options.index(curr_goal), horizontal=True, label_visibility="collapsed")
+            selected_goal = st.radio("Goal", goal_options, index=goal_options.index(curr_goal_display), horizontal=True, label_visibility="collapsed")
+            st.session_state.user["goal"] = goal_map[selected_goal]
 
         st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
 
-        st.markdown("<label style='font-size:0.9rem; font-weight:600;'>Type of Diet</label>", unsafe_allow_html=True)
-        diet_options = ["Balanced", "High Protein", "Low Carb", "Keto", "Vegetarian"]
-        curr_diet = st.session_state.user.get("diet_type", "Balanced")
+        st.markdown(f"<label style='font-size:0.9rem; font-weight:600;'>{'نوع الحمية الغذائية' if is_ar else 'Type of Diet'}</label>", unsafe_allow_html=True)
+        diet_map = {
+            "متوازنة": "Balanced", "عالية البروتين": "High Protein", "قليلة الكارب": "Low Carb", "كيتو": "Keto", "نباتية": "Vegetarian"
+        } if is_ar else {
+            "Balanced": "Balanced", "High Protein": "High Protein", "Low Carb": "Low Carb", "Keto": "Keto", "Vegetarian": "Vegetarian"
+        }
+        diet_options = list(diet_map.keys())
+        curr_diet_display = [k for k, v in diet_map.items() if v == st.session_state.user.get("diet_type")][0]
+
         if hasattr(st, "pills"):
-            selected_diet = st.pills("Diet", options=diet_options, default=curr_diet, label_visibility="collapsed")
+            selected_diet = st.pills("Diet", options=diet_options, default=curr_diet_display, label_visibility="collapsed")
             if selected_diet:
-                st.session_state.user["diet_type"] = selected_diet
-        elif hasattr(st, "segmented_control"):
-            selected_diet = st.segmented_control("Diet", options=diet_options, default=curr_diet, label_visibility="collapsed")
-            if selected_diet:
-                st.session_state.user["diet_type"] = selected_diet
+                st.session_state.user["diet_type"] = diet_map[selected_diet]
         else:
-            st.session_state.user["diet_type"] = st.radio("Diet", diet_options, index=diet_options.index(curr_diet), horizontal=True, label_visibility="collapsed")
+            selected_diet = st.radio("Diet", diet_options, index=diet_options.index(curr_diet_display), horizontal=True, label_visibility="collapsed")
+            st.session_state.user["diet_type"] = diet_map[selected_diet]
 
         st.markdown("<div style='height: 35px;'></div>", unsafe_allow_html=True)
 
-        if st.button("Continue to Meal Dashboard →", type="primary", use_container_width=True):
+        btn_continue_text = "الانتقال إلى جدول الوجبات ←" if is_ar else "Continue to Meal Dashboard →"
+        if st.button(btn_continue_text, type="primary", use_container_width=True):
             weight_kg = float(st.session_state.user["weight_val"])
             if st.session_state.user["weight_unit"] == "pound":
                 weight_kg = weight_kg * 0.453592
@@ -413,28 +439,32 @@ if st.session_state.page == 1:
 
 
 # ==============================================================================
-# PAGE 2: MEAL DASHBOARD, GROCERY LIST & MARGOT CHEF
+# PAGE 2: MEAL DASHBOARD, NOTE-STYLE GROCERY & MARGOT
 # ==============================================================================
 elif st.session_state.page == 2:
     nav1, nav2, nav3 = st.columns([4, 2, 1])
     with nav1:
-        st.markdown("### Meal & Recipe Nutrition Dashboard")
-        st.caption("Interactive macro analysis, recipe guides, and grocery planning")
+        st.markdown(f"### {'لوحة تحكم الوجبات والماكروز' if is_ar else 'Meal & Recipe Nutrition Dashboard'}")
+        st.caption("تحليل الماكروز، وصفات دقيقة بدليل التحضير وقائمة التسوق الذكية" if is_ar else "Interactive macro analysis, recipe guides, and grocery planning")
     
     with nav2:
+        plan_options = ["اليوم (يوم واحد)", "هذا الأسبوع (7 أيام)"] if is_ar else ["Today (1 Day)", "This Week (7 Days)"]
+        curr_plan_idx = 0 if "1" in st.session_state.plan_mode else 1
         plan_selection = st.radio(
-            "Planning Horizon",
-            ["Today (1 Day)", "This Week (7 Days)"],
+            "Horizon",
+            plan_options,
             horizontal=True,
-            index=0 if st.session_state.plan_mode == "Today (1 Day)" else 1,
+            index=curr_plan_idx,
             label_visibility="collapsed"
         )
-        if plan_selection != st.session_state.plan_mode:
-            st.session_state.plan_mode = plan_selection
+        norm_plan = "Today (1 Day)" if ("1" in plan_selection or "اليوم" in plan_selection) else "This Week (7 Days)"
+        if norm_plan != st.session_state.plan_mode:
+            st.session_state.plan_mode = norm_plan
             st.rerun()
 
     with nav3:
-        if st.button("← Edit Profile", use_container_width=True):
+        btn_back_text = "تعديل الملف →" if is_ar else "← Edit Profile"
+        if st.button(btn_back_text, use_container_width=True):
             st.session_state.page = 1
             st.rerun()
 
@@ -458,9 +488,9 @@ elif st.session_state.page == 2:
     with m1:
         st.markdown(f"""
         <div class="metric-card">
-            <span style="font-size: 0.85rem; color: #64748B; font-weight:700;">ENERGY ({st.session_state.plan_mode})</span>
+            <span style="font-size: 0.85rem; color: #64748B; font-weight:700;">{'السعرات الحرارية' if is_ar else 'ENERGY'} ({st.session_state.plan_mode})</span>
             <h3 style="margin:4px 0 0 0; color:#0F172A;">{int(c_cals)} <span style="font-size:0.9rem; font-weight:500;">/ {target_cals} kcal</span></h3>
-            <p style="margin:2px 0 0 0; font-size:0.8rem; color:#10B981; font-weight:700;">Consumed: {int(c_cals)} kcal | Left: {int(left_cals)} kcal</p>
+            <p style="margin:2px 0 0 0; font-size:0.8rem; color:#10B981; font-weight:700;">{'المستهلك' if is_ar else 'Consumed'}: {int(c_cals)} | {'المتبقي' if is_ar else 'Left'}: {int(left_cals)} kcal</p>
         </div>
         """, unsafe_allow_html=True)
         st.progress(min(1.0, c_cals / max(1, target_cals)))
@@ -468,9 +498,9 @@ elif st.session_state.page == 2:
     with m2:
         st.markdown(f"""
         <div class="metric-card">
-            <span style="font-size: 0.85rem; color: #059669; font-weight:700;">PROTEIN</span>
+            <span style="font-size: 0.85rem; color: #059669; font-weight:700;">{'البروتين' if is_ar else 'PROTEIN'}</span>
             <h3 style="margin:4px 0 0 0; color:#0F172A;">{int(c_pro)}g <span style="font-size:0.9rem; font-weight:500;">/ {target_pro}g</span></h3>
-            <p style="margin:2px 0 0 0; font-size:0.8rem; color:#059669; font-weight:700;">Consumed: {int(c_pro)}g | Left: {int(left_pro)}g</p>
+            <p style="margin:2px 0 0 0; font-size:0.8rem; color:#059669; font-weight:700;">{'المستهلك' if is_ar else 'Consumed'}: {int(c_pro)}g | {'المتبقي' if is_ar else 'Left'}: {int(left_pro)}g</p>
         </div>
         """, unsafe_allow_html=True)
         st.progress(min(1.0, c_pro / max(1, target_pro)))
@@ -478,9 +508,9 @@ elif st.session_state.page == 2:
     with m3:
         st.markdown(f"""
         <div class="metric-card">
-            <span style="font-size: 0.85rem; color: #CA8A04; font-weight:700;">CARBS</span>
+            <span style="font-size: 0.85rem; color: #CA8A04; font-weight:700;">{'الكاربوهيدرات' if is_ar else 'CARBS'}</span>
             <h3 style="margin:4px 0 0 0; color:#0F172A;">{int(c_carb)}g <span style="font-size:0.9rem; font-weight:500;">/ {target_carb}g</span></h3>
-            <p style="margin:2px 0 0 0; font-size:0.8rem; color:#CA8A04; font-weight:700;">Consumed: {int(c_carb)}g | Left: {int(left_carb)}g</p>
+            <p style="margin:2px 0 0 0; font-size:0.8rem; color:#CA8A04; font-weight:700;">{'المستهلك' if is_ar else 'Consumed'}: {int(c_carb)}g | {'المتبقي' if is_ar else 'Left'}: {int(left_carb)}g</p>
         </div>
         """, unsafe_allow_html=True)
         st.progress(min(1.0, c_carb / max(1, target_carb)))
@@ -488,56 +518,71 @@ elif st.session_state.page == 2:
     with m4:
         st.markdown(f"""
         <div class="metric-card">
-            <span style="font-size: 0.85rem; color: #E11D48; font-weight:700;">FAT</span>
+            <span style="font-size: 0.85rem; color: #E11D48; font-weight:700;">{'الدهون' if is_ar else 'FAT'}</span>
             <h3 style="margin:4px 0 0 0; color:#0F172A;">{int(c_fat)}g <span style="font-size:0.9rem; font-weight:500;">/ {target_fat}g</span></h3>
-            <p style="margin:2px 0 0 0; font-size:0.8rem; color:#E11D48; font-weight:700;">Consumed: {int(c_fat)}g | Left: {int(left_fat)}g</p>
+            <p style="margin:2px 0 0 0; font-size:0.8rem; color:#E11D48; font-weight:700;">{'المستهلك' if is_ar else 'Consumed'}: {int(c_fat)}g | {'المتبقي' if is_ar else 'Left'}: {int(left_fat)}g</p>
         </div>
         """, unsafe_allow_html=True)
         st.progress(min(1.0, c_fat / max(1, target_fat)))
 
     st.markdown("<hr style='border:0; border-top:1px solid #E2E8F0; margin: 25px 0;'>", unsafe_allow_html=True)
 
-    tab_meals, tab_grocery, tab_margot = st.tabs([
-        "🍽️ Recipes & Meal Catalog", 
-        "🛒 Grocery & Shopping List", 
-        "👩‍🍳 Margot AI Chef Assistant"
-    ])
+    tab_titles = ["🍽️ دليل وقائمة الوجبات", "📝 قائمة التسوق الذكية", "👩‍🍳 الشيف مارغو AI"] if is_ar else ["🍽️ Recipes & Meal Catalog", "📝 Grocery Shopping Note", "👩‍🍳 Margot AI Chef Assistant"]
+    tab_meals, tab_grocery, tab_margot = st.tabs(tab_titles)
 
+    # ==========================================
+    # TAB 1: MEAL CATALOG & SEARCH
+    # ==========================================
     with tab_meals:
         if recipes_clean_df.empty:
-            st.warning("No completed recipes found or sheet is still updating. Ensure columns have valid numbers!")
+            st.warning("Connecting to Google Sheets...")
         else:
-            st.markdown("#### Select Meal Slot")
-            meal_slot = st.pills(
-                "Meal Slot",
-                options=list(MEAL_STRUCTURE.keys()),
-                default="Breakfast",
-                label_visibility="collapsed"
-            ) or "Breakfast"
+            # SEARCH BAR
+            search_query = st.text_input(
+                "🔍 بحث عن وجبة بالاسم (عربي أو إنجليزي)..." if is_ar else "🔍 Search recipe by name (English or Arabic)...",
+                value="",
+                placeholder="e.g. Chicken Wrap, دجاج سيزر, Salad..."
+            )
+
+            # Slot selection
+            st.markdown(f"#### {'اختر نوع الوجبة' if is_ar else 'Select Meal Slot'}")
+            slot_options = list(MEAL_STRUCTURE.keys())
+            slot_display = [MEAL_SLOTS_AR[s] for s in slot_options] if is_ar else slot_options
+            
+            selected_slot_raw = st.pills("Slot", options=slot_display, default=slot_display[0], label_visibility="collapsed") or slot_display[0]
+            meal_slot = slot_options[slot_display.index(selected_slot_raw)]
 
             available_subcats = MEAL_STRUCTURE[meal_slot]
-            st.markdown(f"**Categories for {meal_slot}:**")
+            st.markdown(f"**{'التصنيفات المتاحة:' if is_ar else 'Categories:'}**")
             subcat_choice = st.pills(
-                "Subcategories",
-                options=["All"] + available_subcats,
-                default="All",
+                "Subcats",
+                options=["All" if not is_ar else "الكل"] + available_subcats,
+                default="All" if not is_ar else "الكل",
                 label_visibility="collapsed"
-            ) or "All"
+            ) or ("All" if not is_ar else "الكل")
 
-            if meal_slot == "Snacks" and (subcat_choice in ["All", "Side Salads"]):
+            if meal_slot == "Snacks" and (subcat_choice in ["All", "الكل", "Side Salads"]):
                 target_categories = [c for c in available_subcats if c != "Side Salads"] + ["Salads"]
             else:
                 target_categories = available_subcats
 
-            if subcat_choice == "All":
+            if subcat_choice in ["All", "الكل"]:
                 filtered_df = recipes_clean_df[recipes_clean_df["Categories"].isin(target_categories)].copy()
             elif subcat_choice == "Side Salads":
                 filtered_df = recipes_clean_df[recipes_clean_df["Categories"] == "Salads"].copy()
             else:
                 filtered_df = recipes_clean_df[recipes_clean_df["Categories"] == subcat_choice].copy()
 
+            # Apply Search Filter
+            if search_query.strip():
+                q = search_query.strip().lower()
+                filtered_df = filtered_df[
+                    filtered_df["Menu Item"].astype(str).str.lower().str.contains(q, na=False) |
+                    filtered_df["Menu Item Ar"].astype(str).str.lower().str.contains(q, na=False)
+                ]
+
             if filtered_df.empty:
-                st.info(f"No completed recipes currently found for {subcat_choice} in {meal_slot}.")
+                st.info("لا توجد وجبات تطابق البحث حالياً." if is_ar else "No recipes found matching your selection.")
             else:
                 recipes = filtered_df.to_dict(orient="records")
                 cols = st.columns(4)
@@ -556,7 +601,8 @@ elif st.session_state.page == 2:
                         carb = float(recipe.get("Total Carbs", 0)) * portion_multiplier
                         fat = float(recipe.get("Total Fat", 0)) * portion_multiplier
 
-                        display_badge = "Side Salad (½ Portion)" if is_side_salad else raw_cat
+                        display_title = f"{name_ar}<br><span style='font-size:0.85rem; color:#64748B; font-weight:500;'>{name_en}</span>" if is_ar else f"{name_en}<br><span style='font-size:0.85rem; color:#64748B; font-weight:500;'>{name_ar}</span>"
+                        display_badge = ("سلطة جانبية (نصف حصة)" if is_ar else "Side Salad (½ Portion)") if is_side_salad else raw_cat
 
                         st.markdown(f"""
                         <div class="recipe-card">
@@ -565,12 +611,12 @@ elif st.session_state.page == 2:
                                 <div class="badge-count">{display_badge}</div>
                             </div>
                             <div class="recipe-card-body">
-                                <div style="font-weight:700; font-size:1rem; color:#0F172A; min-height:45px; line-height:1.2;">
-                                    {name_en}<br><span style="font-size:0.85rem; color:#64748B; font-weight:500;">{name_ar}</span>
+                                <div style="font-weight:700; font-size:1rem; color:#0F172A; min-height:48px; line-height:1.2;">
+                                    {display_title}
                                 </div>
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin: 8px 0;">
                                     <div>
-                                        <span style="font-size:0.75rem; color:#64748B; font-weight:700;">ENERGY</span>
+                                        <span style="font-size:0.75rem; color:#64748B; font-weight:700;">{'السعرات' if is_ar else 'ENERGY'}</span>
                                         <div style="font-weight:800; font-size:1.05rem; color:#0F172A;">🔥 {cals:.0f} kcal</div>
                                     </div>
                                 </div>
@@ -585,7 +631,7 @@ elif st.session_state.page == 2:
 
                         c_action1, c_action2 = st.columns(2)
                         with c_action1:
-                            if st.button("View Guide", key=f"guide_{meal_slot}_{idx}", use_container_width=True):
+                            if st.button("طريقة التحضير" if is_ar else "View Guide", key=f"guide_{meal_slot}_{idx}", use_container_width=True):
                                 st.session_state.user["selected_recipe"] = {
                                     "name": f"{name_en} (Side Salad ½)" if is_side_salad else name_en,
                                     "clean_name": name_en,
@@ -599,21 +645,18 @@ elif st.session_state.page == 2:
                                 st.rerun()
 
                         with c_action2:
-                            label_btn = "+ Eat Today" if "Today" in st.session_state.plan_mode else "+ Add to Week"
-                            if st.button(label_btn, key=f"eat_{meal_slot}_{idx}", use_container_width=True):
+                            add_label = ("+ تناول اليوم" if "1" in st.session_state.plan_mode else "+ أضف للأسبوع") if is_ar else ("+ Eat Today" if "Today" in st.session_state.plan_mode else "+ Add to Week")
+                            if st.button(add_label, key=f"eat_{meal_slot}_{idx}", use_container_width=True):
                                 st.session_state.user["consumed_calories"] += cals
                                 st.session_state.user["consumed_protein"] += pro
                                 st.session_state.user["consumed_carbs"] += carb
                                 st.session_state.user["consumed_fat"] += fat
 
-                                # Extract specific ingredients from Calories Data sheet
                                 if not recipe_details_df.empty and "Ingredients" in recipe_details_df.columns:
-                                    # Match by Recipe Name
                                     matched_rows = recipe_details_df[
                                         recipe_details_df["Recipe Name"].astype(str).str.lower().str.strip() == name_en.lower()
                                     ]
                                     if matched_rows.empty:
-                                        # Fallback fuzzy match
                                         matched_rows = recipe_details_df[
                                             recipe_details_df.astype(str).apply(lambda r: name_en.lower() in r.to_string().lower(), axis=1)
                                         ]
@@ -626,7 +669,7 @@ elif st.session_state.page == 2:
                                             if not raw_u or raw_u.lower() == "nan":
                                                 raw_u = "g"
                                             
-                                            ing_cat = categorize_ingredient(ing_name)
+                                            ing_cat, _ = categorize_ingredient(ing_name)
 
                                             if ing_name in st.session_state.raw_grocery_items:
                                                 st.session_state.raw_grocery_items[ing_name]["quantity"] += raw_q
@@ -638,35 +681,33 @@ elif st.session_state.page == 2:
                                                 }
                                 st.rerun()
 
-        # Modal Recipe Details
+        # Recipe details modal
         if st.session_state.user["selected_recipe"] is not None:
             rec = st.session_state.user["selected_recipe"]
             st.markdown("<hr style='border:0; border-top:2px solid #10B981; margin: 30px 0;'>", unsafe_allow_html=True)
             
-            st.markdown(f"## 📖 {rec['name']}")
+            title_view = f"📖 {rec['name_ar']} ({rec['name']})" if is_ar else f"📖 {rec['name']} ({rec['name_ar']})"
+            st.markdown(f"## {title_view}")
             m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-            m_col1.metric("Calories", f"{int(rec['cals'])} kcal")
-            m_col2.metric("Protein", f"{rec['pro']:.1f} g")
-            m_col3.metric("Carbs", f"{rec['carb']:.1f} g")
-            m_col4.metric("Fat", f"{rec['fat']:.1f} g")
+            m_col1.metric("السعرات" if is_ar else "Calories", f"{int(rec['cals'])} kcal")
+            m_col2.metric("بروتين" if is_ar else "Protein", f"{rec['pro']:.1f} g")
+            m_col3.metric("كاربوهيدرات" if is_ar else "Carbs", f"{rec['carb']:.1f} g")
+            m_col4.metric("دهون" if is_ar else "Fat", f"{rec['fat']:.1f} g")
 
-            guide_tab1, guide_tab2 = st.tabs(["📝 Recipe Instructions & Ingredients", "📊 Nutritional Macro Analytics"])
+            guide_tab1, guide_tab2 = st.tabs(["📝 المكونات وطريقة الإعداد" if is_ar else "📝 Ingredients & Method", "📊 تحليل نسب الماكروز" if is_ar else "📊 Macro Analytics"])
 
             with guide_tab1:
-                st.markdown("#### Ingredients Baseline & Method")
+                st.markdown(f"#### {'مكونات الوصفة الدقيقة' if is_ar else 'Ingredients Baseline & Method'}")
                 if not recipe_details_df.empty:
                     clean_match_name = rec.get("clean_name", rec['name'].replace(" (Side Salad ½)", ""))
                     matched_items = recipe_details_df[
                         recipe_details_df.astype(str).apply(lambda row: clean_match_name.lower() in row.to_string().lower(), axis=1)
                     ]
                     if not matched_items.empty:
-                        # Display clean columns
                         cols_to_show = [c for c in ["Ingredients", "Qtty.", "Unit", "Calories", "Protein", "Carbs", "Fat", "Method"] if c in matched_items.columns]
                         st.dataframe(matched_items[cols_to_show] if cols_to_show else matched_items, use_container_width=True)
                     else:
-                        st.info("Ingredients loaded directly from your Google Sheet.")
-                else:
-                    st.info("Detailed ingredient rows loaded from Google Sheet table.")
+                        st.info("تم تحميل المكونات من جدول البيانات." if is_ar else "Ingredients loaded from Google Sheet.")
 
             with guide_tab2:
                 total_macro_cals = (rec['pro'] * 4) + (rec['carb'] * 4) + (rec['fat'] * 9)
@@ -676,71 +717,92 @@ elif st.session_state.page == 2:
                     f_pct = round(((rec['fat'] * 9) / total_macro_cals) * 100)
 
                     c_pct1, c_pct2, c_pct3 = st.columns(3)
-                    c_pct1.success(f"Protein: {p_pct}% ({rec['pro'] * 4:.0f} kcal)")
-                    c_pct2.warning(f"Carbohydrates: {c_pct}% ({rec['carb'] * 4:.0f} kcal)")
-                    c_pct3.error(f"Fat: {f_pct}% ({rec['fat'] * 9:.0f} kcal)")
+                    c_pct1.success(f"{'البروتين' if is_ar else 'Protein'}: {p_pct}% ({rec['pro'] * 4:.0f} kcal)")
+                    c_pct2.warning(f"{'الكاربوهيدرات' if is_ar else 'Carbs'}: {c_pct}% ({rec['carb'] * 4:.0f} kcal)")
+                    c_pct3.error(f"{'الدهون' if is_ar else 'Fat'}: {f_pct}% ({rec['fat'] * 9:.0f} kcal)")
 
-            if st.button("Close Recipe Guide", type="secondary"):
+            if st.button("إغلاق دليل الوصفة" if is_ar else "Close Recipe Guide", type="secondary"):
                 st.session_state.user["selected_recipe"] = None
                 st.rerun()
 
-    # ==============================================================================
-    # TAB 2: AISLE-GROUPED CONSOLIDATED GROCERY LIST
-    # ==============================================================================
+    # ==========================================
+    # TAB 2: NOTE-STYLE GROCERY LIST WITH CHECKBOXES
+    # ==========================================
     with tab_grocery:
-        st.markdown(f"### 🛒 Consolidated Grocery Shopping List ({st.session_state.plan_mode})")
-        st.caption("Aggregated raw ingredients grouped by supermarket section based on your planned meals.")
+        st.markdown(f"### {'📝 مفكرة التسوق الذكية للمكونات' if is_ar else '📝 Smart Grocery Notepad'} ({st.session_state.plan_mode})")
+        st.caption("قائمة تفاعلية بالمكونات مقسمة حسب أقسام السوبرماركت مع خاصية الشطب عند الشراء أو التوفر." if is_ar else "Interactive grocery checklist grouped by supermarket aisle with live check-off features.")
 
         if not st.session_state.raw_grocery_items:
-            st.info("Your shopping list is empty! Click '+ Eat Today' or '+ Add to Week' on any recipe card to build your ingredient list.")
+            st.info("مفكرة التسوق فارغة! اضغط على '+ تناول اليوم' أو '+ أضف للأسبوع' في أي وصفة لإضافة مقاديرها تلقائياً." if is_ar else "Your notepad is empty! Click '+ Eat Today' or '+ Add to Week' on any recipe card to build your ingredient list.")
         else:
-            # Group items by aisle category
+            # Group items by aisle
             items_by_cat = {}
             for ing_name, data in st.session_state.raw_grocery_items.items():
                 cat = data.get("category", "🧂 Pantry, Oils, Spices & Dressings")
                 if cat not in items_by_cat:
                     items_by_cat[cat] = []
                 
-                # Format quantity nicely (no decimal if integer)
                 q_val = round(data["quantity"], 1)
                 if q_val.is_integer():
                     q_val = int(q_val)
                     
                 items_by_cat[cat].append({
-                    "Ingredient": ing_name,
-                    "Total Amount Needed": f"{q_val} {data['unit']}"
+                    "name": ing_name,
+                    "amount": f"{q_val} {data['unit']}"
                 })
 
-            # Render tables per section
-            for section, rows in sorted(items_by_cat.items()):
-                st.markdown(f"<div class='grocery-section-header'>{section} ({len(rows)} items)</div>", unsafe_allow_html=True)
-                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            # Render as interactive Note Cards
+            for section, items in sorted(items_by_cat.items()):
+                st.markdown(f"""
+                <div class="note-card">
+                    <div class="note-header">
+                        <span>{section}</span>
+                        <span style="font-size:0.85rem; font-weight:600; color:#B45309;">({len(items)} {'أصناف' if is_ar else 'items'})</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
-            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-            if st.button("Clear Shopping List", type="secondary"):
+                for item in items:
+                    c_chk, c_txt = st.columns([1, 11])
+                    chk_key = f"chk_{item['name']}"
+                    
+                    with c_chk:
+                        is_checked = st.checkbox("", key=chk_key, value=st.session_state.grocery_checked.get(item['name'], False), label_visibility="collapsed")
+                        st.session_state.grocery_checked[item['name']] = is_checked
+                    
+                    with c_txt:
+                        if is_checked:
+                            st.markdown(f"<span style='text-decoration: line-through; color: #94A3B8; font-weight:500;'>{item['name']} — <b>{item['amount']}</b> ✅ (متوفر / تم الشراء)</span>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"<span style='color: #1E293B; font-weight:600;'>{item['name']}</span> — <span style='color:#059669; font-weight:700;'>{item['amount']}</span>", unsafe_allow_html=True)
+
+                st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
+            if st.button("مسح قائمة التسوق بالكامل" if is_ar else "Clear Shopping Notepad", type="secondary"):
                 st.session_state.raw_grocery_items = {}
+                st.session_state.grocery_checked = {}
                 st.session_state.user["consumed_calories"] = 0.0
                 st.session_state.user["consumed_protein"] = 0.0
                 st.session_state.user["consumed_carbs"] = 0.0
                 st.session_state.user["consumed_fat"] = 0.0
                 st.rerun()
 
-    # ==============================================================================
+    # ==========================================
     # TAB 3: MARGOT AI CHEF ASSISTANT
-    # ==============================================================================
+    # ==========================================
     with tab_margot:
-        st.markdown("### 👩‍🍳 Margot | Culinary Nutritionist & AI Chef")
-        st.caption("Ask Margot about ingredient swaps, culinary techniques, prep steps, or diet tailoring.")
+        st.markdown(f"### {'👩‍🍳 الشيف مارغو | أخصائية الطهي والتغذية' if is_ar else '👩‍🍳 Margot | Culinary Nutritionist & AI Chef'}")
+        st.caption("اسأل مارغو عن بدائل المكونات، أسرار الطهي الصحي، أو تعديل الوصفات حسب هدفك." if is_ar else "Ask Margot about ingredient swaps, culinary techniques, prep steps, or diet tailoring.")
 
         chat_container = st.container()
         with chat_container:
             for msg in st.session_state.margot_history:
                 if msg["role"] == "user":
-                    st.markdown(f"<div class='chat-bubble chat-user'><b>You:</b><br>{msg['content']}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='chat-bubble chat-user'><b>{'أنت' if is_ar else 'You'}:</b><br>{msg['content']}</div>", unsafe_allow_html=True)
                 else:
-                    st.markdown(f"<div class='chat-bubble chat-margot'><b>👩‍🍳 Margot:</b><br>{msg['content']}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='chat-bubble chat-margot'><b>👩‍🍳 {'مارغو' if is_ar else 'Margot'}:</b><br>{msg['content']}</div>", unsafe_allow_html=True)
 
-        user_input = st.chat_input("Ask Margot for a recipe substitution, cooking tip, or custom portion...")
+        user_input = st.chat_input("اطلب من مارغو بديلاً، نصيحة تحضير، أو تعديل حصة..." if is_ar else "Ask Margot for a recipe substitution, cooking tip, or custom portion...")
         if user_input:
             st.session_state.margot_history.append({"role": "user", "content": user_input})
 
@@ -755,14 +817,16 @@ elif st.session_state.page == 2:
             if api_key:
                 try:
                     client = genai.Client(api_key=api_key)
+                    lang_instruction = "Respond fluently in clear Modern Standard Arabic (العربية الفصحى)." if is_ar else "Respond in English."
                     sys_prompt = f"""
                     You are Margot, the personal AI Chef Assistant for Munch Me. 
-                    You specialize in evidence-based nutrition, Middle Eastern and international wholesome cuisine, and precision 1g ingredient scaling.
+                    You specialize in clinical nutrition, wholesome Middle Eastern and international cooking, and precision ingredient scaling.
                     User Profile:
                     - Goal: {st.session_state.user['goal']}
                     - Diet Type: {st.session_state.user['diet_type']}
                     - Target Calories: {st.session_state.user['daily_calories']} kcal
-                    Keep your answers warm, concise, culinary-focused, and practical.
+                    Language directive: {lang_instruction}
+                    Keep answers warm, concise, culinary-focused, and practical.
                     """
                     response = client.models.generate_content(
                         model="gemini-2.5-flash",
@@ -770,9 +834,9 @@ elif st.session_state.page == 2:
                     )
                     margot_reply = response.text
                 except Exception as e:
-                    margot_reply = f"Chef Margot note: I encountered an issue accessing my culinary AI model ({e}). Please ensure your GEMINI_API_KEY is configured in Streamlit Secrets."
+                    margot_reply = f"ملاحظة الشيف مارغو: واجهت مشكلة في الوصول للذكاء الاصطناعي ({e})" if is_ar else f"Chef Margot note: I encountered an issue accessing my AI model ({e})."
             else:
-                margot_reply = "I'm ready to cook! To activate my full AI brain, please add `GEMINI_API_KEY` into your Streamlit Cloud Secrets (`Settings -> Secrets`)."
+                margot_reply = "لتفعيل ذكاء الشيف مارغو، يرجى إضافة مفتاح `GEMINI_API_KEY` داخل إعدادات Streamlit Secrets." if is_ar else "I'm ready to cook! To activate my full AI brain, please add `GEMINI_API_KEY` into your Streamlit Cloud Secrets (`Settings -> Secrets`)."
 
             st.session_state.margot_history.append({"role": "margot", "content": margot_reply})
             st.rerun()
